@@ -51,8 +51,10 @@ int main(int argc, char *argv[]) {
   // step through the simulator
   json::array_t states;
   states.push_back(sim.get_json_state());
-  sim.step();
-  states.push_back(sim.get_json_state());
+  for (int i = 0; i < 5; ++i) {
+    sim.step();
+    states.push_back(sim.get_json_state());
+  }
 
   // write output file
   write_json(output_file, states);

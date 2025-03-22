@@ -2,6 +2,7 @@
 
 void simulator::step() {
   // decode
+  m_rename_unit.step(m_processor_state, m_program);
   m_decode_unit.step(m_processor_state, m_program);
 }
 

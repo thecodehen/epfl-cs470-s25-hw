@@ -1,8 +1,6 @@
 #include "processor_state.h"
 
-processor_state::processor_state()
-  : active_list(active_list_size),
-    integer_queue(integer_queue_size) {
+processor_state::processor_state() {
   // physical register file
   physical_register_file.resize(physical_register_file_size, 0);
 
@@ -55,7 +53,7 @@ json processor_state::to_json() const {
   j["FreeList"] = free_list;
   j["BusyBitTable"] = busy_bit_table;
   json::array_t active_list_json;
-  for (auto& entry : active_list.to_vector()) {
+  for (auto& entry : active_list) {
     json::object_t object;
     object["Done"] = entry.done;
     object["Exception"] = entry.exception;
@@ -66,7 +64,7 @@ json processor_state::to_json() const {
   }
   j["ActiveList"] = active_list_json;
   json::array_t integer_queue_json;
-  for (auto& entry : integer_queue.to_vector()) {
+  for (auto& entry : integer_queue) {
     json::object_t object;
     object["DestRegister"] = entry.dest_register;
     object["OpAIsReady"] = entry.op_a_is_ready;

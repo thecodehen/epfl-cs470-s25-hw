@@ -7,6 +7,11 @@ void decode_unit::step(processor_state& state, const program_t& program) {
     return;
   }
 
+  // check if the next stage (rename and dispatch stage) is applying backpressure
+  if (!state.decoded_pcs.empty()) {
+    return;
+  }
+
   // fetch the next instructions to decode
   for (uint32_t i = 0; i < max_decode_instructions; ++i) {
     state.decoded_pcs.push_back({
@@ -18,7 +23,7 @@ void decode_unit::step(processor_state& state, const program_t& program) {
 }
 
 instruction_t decode_unit::decode(const std::string& instruction) {
-  instruction_t instr;
+  instruction_t instr {};
   std::stringstream ss(instruction);
 
   // decode the opcode
