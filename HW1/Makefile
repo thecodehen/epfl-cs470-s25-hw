@@ -14,6 +14,8 @@ INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 CXX := g++
 CXXFLAGS := $(INC_FLAGS) -std=c++17
 
+all: $(BUILD_DIR)/$(TARGET_EXEC)
+
 # final build step
 $(BUILD_DIR)/$(TARGET_EXEC): $(OBJS)
 	$(CXX) $(OBJS) -o $@ $(LDFLAGS)

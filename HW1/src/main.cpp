@@ -3,6 +3,8 @@
 #include <optional>
 #include <string>
 #include "json.hpp"
+#include "processor_state.h"
+
 using json = nlohmann::json;
 
 std::optional<json> parse_input_file(const std::string &input_file) {
@@ -16,6 +18,11 @@ std::optional<json> parse_input_file(const std::string &input_file) {
   return data;
 }
 
+void output_json(const json &data) {
+  std::cout << data.dump(4) << std::endl;
+}
+
+
 int main(int argc, char *argv[]) {
   if (argc != 2) {
     std::cerr << "Usage: " << argv[0] << " <input file>" << std::endl;
@@ -28,6 +35,9 @@ int main(int argc, char *argv[]) {
     return 1;
   }
   std::cout << data.value().dump(4) << std::endl;
+
+  processor_state state;
+  output_json(state.to_json());
 
   return 0;
 }
