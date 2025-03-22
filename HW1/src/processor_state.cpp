@@ -44,14 +44,18 @@ json processor_state::to_json() const {
   json j;
   j["PC"] = pc;
   j["PhysicalRegisterFile"] = physical_register_file;
-  j["DecodedPCs"] = decoded_pcs;
+  json::array_t decoded_pcs_json;
+  for (auto& entry : decoded_pcs) {
+    decoded_pcs_json.push_back(entry.first);
+  }
+  j["DecodedPCs"] = decoded_pcs_json;
   j["ExceptionPC"] = exception_pc;
   j["Exception"] = exception;
   j["RegisterMapTable"] = register_map_table;
   j["FreeList"] = free_list;
   j["BusyBitTable"] = busy_bit_table;
   json::array_t active_list_json;
-  for (auto &entry : active_list.to_vector()) {
+  for (auto& entry : active_list.to_vector()) {
     json::object_t object;
     object["Done"] = entry.done;
     object["Exception"] = entry.exception;
@@ -62,7 +66,7 @@ json processor_state::to_json() const {
   }
   j["ActiveList"] = active_list_json;
   json::array_t integer_queue_json;
-  for (auto &entry : integer_queue.to_vector()) {
+  for (auto& entry : integer_queue.to_vector()) {
     json::object_t object;
     object["DestRegister"] = entry.dest_register;
     object["OpAIsReady"] = entry.op_a_is_ready;

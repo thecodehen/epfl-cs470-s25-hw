@@ -3,7 +3,7 @@
 #include <optional>
 #include <string>
 #include "json.hpp"
-#include "processor_state.h"
+#include "simulator.h"
 
 using json = nlohmann::json;
 
@@ -40,10 +40,22 @@ int main(int argc, char *argv[]) {
 
   // read input file
   std::optional<json> data = read_json(input_file);
+  if (!data) {
+    std::cerr << "Failed to read JSON data from file: " << input_file_name << std::endl;
+    return 1;
+  }
+
+  // create simulator
+  simulator sim(data.value());
+
+  // step through the simulator
+  json::array_t states;
+  states.push_back(sim.get_json_state());
+  sim.step();
+  states.push_back(sim.get_json_state());
 
   // write output file
-  processor_state state;
-  write_json(output_file, state.to_json());
+  write_json(output_file, states);
 
   // close files
   input_file.close();

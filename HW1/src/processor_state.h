@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <vector>
 #include <deque>
+#include "common.h"
 #include "json.hpp"
 #include "max_size_queue.hpp"
 
@@ -24,15 +25,6 @@ constexpr uint32_t logical_register_file_size = 32;
 constexpr uint32_t physical_register_file_size = 64;
 constexpr uint32_t active_list_size = 32;
 constexpr uint32_t integer_queue_size = 32;
-
-enum class opcode {
-  add,
-  addi,
-  sub,
-  mulu,
-  divu,
-  remu,
-};
 
 struct active_list_entry_t {
   bool done;
@@ -58,7 +50,7 @@ class processor_state {
 public:
   pc_t pc {};
   std::vector<uint64_t> physical_register_file;
-  std::deque<pc_t> decoded_pcs;
+  std::deque<std::pair<pc_t, instruction_t>> decoded_pcs;
   pc_t exception_pc {};
   bool exception {};
   std::vector<reg_t> register_map_table;
