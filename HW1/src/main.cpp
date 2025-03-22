@@ -7,13 +7,13 @@
 
 using json = nlohmann::json;
 
-std::optional<json> read_json(std::ifstream& file) {
+std::optional<json> read_json(std::istream& file) {
   json data = json::parse(file);
   return data;
 }
 
-void write_json(std::ofstream& file, const json& data) {
-  file << data.dump(4) << std::endl;
+void write_json(std::ostream& os, const json& data) {
+  os << data.dump(4) << std::endl;
 }
 
 int main(int argc, char *argv[]) {

@@ -21,6 +21,25 @@ processor_state::processor_state()
   busy_bit_table.resize(physical_register_file_size, false);
 }
 
+std::string opcode_to_string(const opcode op) {
+  switch (op) {
+    case opcode::add:
+      return "add";
+    case opcode::addi:
+      return "add";
+    case opcode::sub:
+      return "sub";
+    case opcode::mulu:
+      return "mulu";
+    case opcode::divu:
+      return "divu";
+    case opcode::remu:
+      return "remu";
+    default:
+      return "unknown";
+  }
+}
+
 json processor_state::to_json() const {
   json j;
   j["PC"] = pc;
@@ -52,7 +71,7 @@ json processor_state::to_json() const {
     object["OpBIsReady"] = entry.op_b_is_ready;
     object["OpBRegTag"] = entry.op_b_reg_tag;
     object["OpBValue"] = entry.op_b_value;
-    object["Op"] = entry.op;
+    object["Op"] = opcode_to_string(entry.op);
     object["PC"] = entry.pc;
     integer_queue_json.push_back(object);
   }
