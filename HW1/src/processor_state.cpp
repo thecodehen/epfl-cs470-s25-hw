@@ -77,7 +77,7 @@ json processor_state::to_json() const {
     object["OpBIsReady"] = entry.op_b_is_ready;
     object["OpBRegTag"] = entry.op_b_reg_tag;
     object["OpBValue"] = entry.op_b_value;
-    object["Op"] = opcode_to_string(entry.op);
+    object["OpCode"] = opcode_to_string(entry.op);
     object["PC"] = entry.pc;
     integer_queue_json.push_back(object);
   }
