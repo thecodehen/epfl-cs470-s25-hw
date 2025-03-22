@@ -23,28 +23,33 @@ void rename_unit::step(processor_state& state) {
 
     // look up the value of the first operand
     bool op_a_is_ready {false};
-    uint32_t op_a_reg_tag {state.register_map_table.at(instr.op_a)};
+    uint32_t op_a_reg_tag {0};
     operand_t op_a_value {0};
-    if (!state.busy_bit_table.at(op_a_reg_tag)) {
+    uint32_t op_a_reg {state.register_map_table.at(instr.op_a)};
+    if (!state.busy_bit_table.at(op_a_reg)) {
+      // we have the value so we don't need the tag anymore
       op_a_is_ready = true;
       op_a_value = state.physical_register_file.at(op_a_reg_tag);
+    } else {
+      op_a_reg_tag = op_a_reg;
     }
 
     // look up the value of the second operand
     bool op_b_is_ready {false};
-    uint32_t op_b_reg_tag;
+    uint32_t op_b_reg_tag {0};
     operand_t op_b_value {0};
     if (instr.op == opcode::addi) {
       // the second operand is an immediate value
       op_b_is_ready = true;
-      op_b_reg_tag = 0;
       op_b_value = instr.imm;
     } else {
       // look up the value of the second operand
-      op_b_reg_tag = state.register_map_table.at(instr.op_b);
-      if (!state.busy_bit_table.at(op_b_reg_tag)) {
+      uint32_t op_b_reg {state.register_map_table.at(instr.op_b)};
+      if (!state.busy_bit_table.at(op_b_reg)) {
         op_b_is_ready = true;
         op_b_value = state.physical_register_file.at(op_b_reg_tag);
+      } else {
+        op_b_reg_tag = op_b_reg;
       }
     }
 
