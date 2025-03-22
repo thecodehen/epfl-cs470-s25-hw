@@ -8,7 +8,7 @@
 
 class rename_unit {
 public:
-  void step(processor_state& state, const program_t& program);
+  void step(processor_state& state);
 };
 
 

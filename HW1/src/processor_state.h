@@ -4,33 +4,15 @@
 
 
 #include <cstdint>
+#include <list>
 #include <vector>
 #include <deque>
+#include <queue>
 #include "common.h"
 #include "json.hpp"
 #include "max_size_queue.hpp"
 
 using json = nlohmann::json;
-
-struct active_list_entry_t {
-  bool done;
-  bool exception;
-  reg_t logical_destination;
-  reg_t old_destination;
-  pc_t pc;
-};
-
-struct integer_queue_entry_t {
-  reg_t dest_register;
-  bool op_a_is_ready;
-  reg_t op_a_reg_tag;
-  operand_t op_a_value;
-  bool op_b_is_ready;
-  reg_t op_b_reg_tag;
-  operand_t op_b_value;
-  opcode op;
-  pc_t pc;
-};
 
 class processor_state {
 public:
@@ -43,7 +25,11 @@ public:
   std::deque<reg_t> free_list;
   std::vector<bool> busy_bit_table;
   std::deque<active_list_entry_t> active_list;
-  std::deque<integer_queue_entry_t> integer_queue;
+  std::list<integer_queue_entry_t> integer_queue;
+
+  // non-visible states
+  std::vector<std::queue<alu_queue_entry_t>> alu_queues; // similar to register 3
+  std::vector<std::queue<alu_result_t>> alu_results; // similar to register 5
   processor_state();
   json to_json() const;
 };

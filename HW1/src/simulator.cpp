@@ -1,8 +1,22 @@
 #include "simulator.h"
 
+#include <iostream>
+
+simulator::simulator(const program_t &program)
+  : m_program(program) {
+  for (int i = 0; i < num_alus; ++i) {
+    m_alu_units.push_back(
+      alu_unit(i)
+    );
+  }
+}
+
 void simulator::step() {
-  // decode
-  m_rename_unit.step(m_processor_state, m_program);
+  for (auto& alu_unit : m_alu_units) {
+    alu_unit.step(m_processor_state);
+  }
+  m_issue_unit.step(m_processor_state);
+  m_rename_unit.step(m_processor_state);
   m_decode_unit.step(m_processor_state, m_program);
 }
 

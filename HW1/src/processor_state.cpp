@@ -17,6 +17,10 @@ processor_state::processor_state() {
 
   // busy bit table
   busy_bit_table.resize(physical_register_file_size, false);
+
+  // alu queues
+  alu_queues.resize(num_alus);
+  alu_results.resize(num_alus);
 }
 
 std::string opcode_to_string(const opcode op) {

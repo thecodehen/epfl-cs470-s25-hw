@@ -1,6 +1,6 @@
 #include "rename_unit.h"
 
-void rename_unit::step(processor_state& state, const program_t& program) {
+void rename_unit::step(processor_state& state) {
   // check if there is are instructions to rename
   if (state.decoded_pcs.empty()) {
     return;

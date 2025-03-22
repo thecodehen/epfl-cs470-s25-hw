@@ -34,9 +34,43 @@ struct instruction_t {
   operand_t imm;
 };
 
+struct active_list_entry_t {
+  bool done;
+  bool exception;
+  reg_t logical_destination;
+  reg_t old_destination;
+  pc_t pc;
+};
+
+struct integer_queue_entry_t {
+  reg_t dest_register;
+  bool op_a_is_ready;
+  reg_t op_a_reg_tag;
+  operand_t op_a_value;
+  bool op_b_is_ready;
+  reg_t op_b_reg_tag;
+  operand_t op_b_value;
+  opcode op;
+  pc_t pc;
+};
+
+struct alu_queue_entry_t {
+  reg_t dest_register;
+  operand_t op_a_value;
+  operand_t op_b_value;
+  opcode op;
+};
+
+struct alu_result_t {
+  reg_t dest_register;
+  operand_t result;
+  bool exception;
+};
+
 constexpr uint32_t logical_register_file_size = 32;
 constexpr uint32_t physical_register_file_size = 64;
 constexpr uint32_t active_list_size = 32;
 constexpr uint32_t integer_queue_size = 32;
+constexpr uint32_t num_alus {4};
 
 #endif //COMMON_H
