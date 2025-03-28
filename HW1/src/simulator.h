@@ -5,6 +5,7 @@
 
 #include <vector>
 #include "alu_unit.h"
+#include "commit_unit.h"
 #include "common.h"
 #include "decode_unit.h"
 #include "issue_unit.h"
@@ -24,6 +25,7 @@ private:
   rename_unit m_rename_unit;
   issue_unit m_issue_unit;
   std::vector<alu_unit> m_alu_units;
+  commit_unit m_commit_unit;
 };
 
 

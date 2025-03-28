@@ -3,18 +3,18 @@
 #include <iostream>
 
 void alu_unit::step(processor_state &state) {
-  // check if we have a result in the second cycle and propagate it to the processor state
-  if (has_result) {
-    state.alu_results.at(m_alu_id).push(m_alu_result);
-    has_result = false;
-  }
-
-  // check if there are queue_entryuctions to execute in the first stage
-  if (state.alu_queues.at(m_alu_id).empty()) {
+  // check if we have backpressure
+  if (!state.alu_results.at(m_alu_id).empty()) {
     return;
   }
 
-  // get the queue_entryuction
+  // check if there are instructions to execute
+  if (state.alu_queues.at(m_alu_id).empty()) {
+    return;
+  }
+  std::cout << "alu " << m_alu_id << " executing " << state.alu_queues.at(m_alu_id).front().pc << '\n';
+
+  // get the instruction
   auto queue_entry = state.alu_queues.at(m_alu_id).front();
   state.alu_queues.at(m_alu_id).pop();
 
@@ -22,6 +22,7 @@ void alu_unit::step(processor_state &state) {
   alu_result_t result {};
   result.dest_register = queue_entry.dest_register;
   result.exception = false;
+  result.pc = queue_entry.pc;
 
   switch (queue_entry.op) {
     case opcode::add:
@@ -55,6 +56,6 @@ void alu_unit::step(processor_state &state) {
       break;
   }
 
-  has_result = true;
-  m_alu_result = result;
+  // push the result to the result queue
+  state.alu_results.at(m_alu_id).push(result);
 }

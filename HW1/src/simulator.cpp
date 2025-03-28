@@ -12,6 +12,7 @@ simulator::simulator(const program_t &program)
 }
 
 void simulator::step() {
+  m_commit_unit.step(m_processor_state);
   for (auto& alu_unit : m_alu_units) {
     alu_unit.step(m_processor_state);
   }

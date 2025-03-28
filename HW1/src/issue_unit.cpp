@@ -22,6 +22,7 @@ void issue_unit::step(processor_state& state) {
             .op_a_value = entry.op_a_value,
             .op_b_value = entry.op_b_value,
             .op = entry.op,
+            .pc = entry.pc,
           });
           should_remove = true;
           break;

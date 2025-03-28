@@ -13,8 +13,6 @@ public:
   void step(processor_state& state);
 private:
   uint32_t m_alu_id;
-  bool has_result {false};
-  alu_result_t m_alu_result {};
 };
 
 
