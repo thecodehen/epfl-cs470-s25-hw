@@ -35,7 +35,6 @@ void commit_unit::step(processor_state& state) {
 
     // commit the instruction
     state.free_list.push_back(active_list_entry.old_destination);
-    state.busy_bit_table.at(active_list_entry.old_destination) = false;
     it = std::next(it);
     state.active_list.pop_front();
     num_committed_instructions++;
@@ -53,6 +52,7 @@ void commit_unit::step(processor_state& state) {
       if (alu_result.pc == active_list_entry.pc) {
         active_list_entry.done = true;
         active_list_entry.exception = alu_result.exception;
+        state.busy_bit_table.at(alu_result.dest_register) = false;
         state.physical_register_file.at(alu_result.dest_register) = alu_result.result;
         break;
       }
