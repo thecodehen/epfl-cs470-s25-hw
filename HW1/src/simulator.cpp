@@ -9,7 +9,16 @@ simulator::simulator(const program_t &program)
   }
 }
 
+bool simulator::can_step() {
+  return !m_processor_state.active_list.empty() || m_processor_state.pc < m_program.size();
+}
+
 void simulator::step() {
+  // check if we can step
+  if (!can_step()) {
+    return;
+  }
+
   // process forwarding
   m_forward_unit.step(m_processor_state);
   m_commit_unit.step(m_processor_state);

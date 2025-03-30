@@ -51,7 +51,7 @@ int main(int argc, char *argv[]) {
   // step through the simulator
   json::array_t states;
   states.push_back(sim.get_json_state());
-  for (int i = 0; i < 5; ++i) {
+  while (sim.can_step()) {
     sim.step();
     states.push_back(sim.get_json_state());
   }

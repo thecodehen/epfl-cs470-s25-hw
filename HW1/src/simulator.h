@@ -17,6 +17,7 @@
 class simulator {
 public:
   explicit simulator(const program_t &program);
+  bool can_step();
   void step();
   json get_json_state();
 private:
