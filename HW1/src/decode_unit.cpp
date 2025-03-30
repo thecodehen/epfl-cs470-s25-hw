@@ -3,7 +3,7 @@
 
 void decode_unit::step(processor_state& state, const program_t& program) {
   // check if there is an instruction to decode
-  if (state.pc == program.size() - 1) {
+  if (state.pc == program.size()) {
     return;
   }
 
