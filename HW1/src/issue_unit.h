@@ -8,6 +8,9 @@
 class issue_unit {
 public:
   void step(processor_state& state);
+
+private:
+  void forward_from_alu_results(processor_state& state) const;
 };
 
 

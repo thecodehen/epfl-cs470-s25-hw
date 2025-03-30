@@ -1,7 +1,5 @@
 #include "simulator.h"
 
-#include <iostream>
-
 simulator::simulator(const program_t &program)
   : m_program(program) {
   for (int i = 0; i < num_alus; ++i) {
@@ -12,6 +10,8 @@ simulator::simulator(const program_t &program)
 }
 
 void simulator::step() {
+  // process forwarding
+  m_forward_unit.step(m_processor_state);
   m_commit_unit.step(m_processor_state);
   for (auto& alu_unit : m_alu_units) {
     alu_unit.step(m_processor_state);

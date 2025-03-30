@@ -2,15 +2,15 @@
 #define PROCESSOR_STATE_H
 
 
-
 #include <cstdint>
-#include <list>
-#include <vector>
 #include <deque>
+#include <list>
 #include <queue>
+#include <vector>
 #include "common.h"
 #include "json.hpp"
-#include "max_size_queue.hpp"
+
+#include <optional>
 
 using json = nlohmann::json;
 
@@ -29,9 +29,11 @@ public:
 
   // non-visible states
   std::vector<std::queue<alu_queue_entry_t>> alu_queues; // similar to register 3
-  std::vector<std::queue<alu_result_t>> alu_results; // similar to register 5
+  std::vector<std::queue<alu_result_t>> alu_results; // similar to register 4
+  std::vector<alu_result_t> alu_forward_results; // represents the wires in the forwarding path
   processor_state();
   json to_json() const;
+  std::optional<operand_t> lookup_from_alu_forward_results(reg_t reg_tag) const;
 };
 
 

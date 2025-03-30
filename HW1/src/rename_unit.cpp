@@ -1,5 +1,7 @@
 #include "rename_unit.h"
 
+#include <optional>
+
 void rename_unit::step(processor_state& state) {
   // check if there is are instructions to rename
   if (state.decoded_pcs.empty()) {
@@ -23,15 +25,17 @@ void rename_unit::step(processor_state& state) {
 
     // look up the value of the first operand
     bool op_a_is_ready {false};
-    uint32_t op_a_reg_tag {0};
+    uint32_t op_a_reg_tag {state.register_map_table.at(instr.op_a)};
     operand_t op_a_value {0};
-    uint32_t op_a_reg {state.register_map_table.at(instr.op_a)};
-    if (!state.busy_bit_table.at(op_a_reg)) {
+    std::optional<operand_t> result = state.lookup_from_alu_forward_results(op_a_reg_tag);
+    if (!state.busy_bit_table.at(op_a_reg_tag)) {
       // we have the value so we don't need the tag anymore
       op_a_is_ready = true;
       op_a_value = state.physical_register_file.at(op_a_reg_tag);
-    } else {
-      op_a_reg_tag = op_a_reg;
+    } else if (result.has_value()) {
+      // we got the values from the forwarding path
+      op_a_is_ready = true;
+      op_a_value = result.value();
     }
 
     // look up the value of the second operand
@@ -44,12 +48,14 @@ void rename_unit::step(processor_state& state) {
       op_b_value = instr.imm;
     } else {
       // look up the value of the second operand
-      uint32_t op_b_reg {state.register_map_table.at(instr.op_b)};
-      if (!state.busy_bit_table.at(op_b_reg)) {
+      op_b_reg_tag = state.register_map_table.at(instr.op_b);
+      std::optional<operand_t> result = state.lookup_from_alu_forward_results(op_b_reg_tag);
+      if (!state.busy_bit_table.at(op_b_reg_tag)) {
         op_b_is_ready = true;
         op_b_value = state.physical_register_file.at(op_b_reg_tag);
-      } else {
-        op_b_reg_tag = op_b_reg;
+      } else if (result.has_value()) {
+        op_b_is_ready = true;
+        op_b_value = result.value();
       }
     }
 
@@ -76,10 +82,10 @@ void rename_unit::step(processor_state& state) {
     integer_queue_entry_t integer_queue_entry {
       .dest_register = new_dest,
       .op_a_is_ready = op_a_is_ready,
-      .op_a_reg_tag =  op_a_reg_tag,
+      .op_a_reg_tag =  op_a_is_ready ? 0 : op_a_reg_tag,
       .op_a_value =    op_a_value,
       .op_b_is_ready = op_b_is_ready,
-      .op_b_reg_tag =  op_b_reg_tag,
+      .op_b_reg_tag =  op_b_is_ready ? 0 : op_b_reg_tag,
       .op_b_value =    op_b_value,
       .op =            instr.op,
       .pc =            pc,

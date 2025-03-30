@@ -1,5 +1,7 @@
 #include "processor_state.h"
 
+#include <optional>
+
 processor_state::processor_state() {
   // physical register file
   physical_register_file.resize(physical_register_file_size, 0);
@@ -21,6 +23,15 @@ processor_state::processor_state() {
   // alu queues
   alu_queues.resize(num_alus);
   alu_results.resize(num_alus);
+}
+
+std::optional<operand_t> processor_state::lookup_from_alu_forward_results(reg_t reg_tag) const {
+  for (auto& alu_result : alu_forward_results) {
+    if (alu_result.dest_register == reg_tag) {
+      return alu_result.result;
+    }
+  }
+  return std::nullopt;
 }
 
 std::string opcode_to_string(const opcode op) {
