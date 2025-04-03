@@ -31,7 +31,12 @@ void commit_unit::step(processor_state& state) {
     }
 
     // check if we have an exception
-    // TODO: handle exceptions
+    if (active_list_entry.exception) {
+      state.exception = true;
+      state.exception_pc = active_list_entry.pc;
+      state.pc = exception_pc_addr;
+      break;
+    }
 
     // commit the instruction
     state.free_list.push_back(active_list_entry.old_destination);

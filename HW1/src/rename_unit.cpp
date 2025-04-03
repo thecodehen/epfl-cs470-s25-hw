@@ -8,6 +8,10 @@ void rename_unit::step(processor_state& state) {
     return;
   }
 
+  if (state.exception) {
+    state.integer_queue.clear();
+  }
+
   // check if we have available space in the active list and integer queue
   unsigned long num_instructions_to_rename {state.decoded_pcs.size()};
   if (state.active_list.size() + num_instructions_to_rename > active_list_size) {

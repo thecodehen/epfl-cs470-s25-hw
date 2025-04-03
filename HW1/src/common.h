@@ -75,5 +75,6 @@ constexpr uint32_t active_list_size = 32;
 constexpr uint32_t integer_queue_size = 32;
 constexpr uint32_t num_alus {4};
 constexpr uint32_t max_commit_instructions {4};
+constexpr uint32_t exception_pc_addr {0x10000};
 
 #endif //COMMON_H

@@ -10,7 +10,8 @@ simulator::simulator(const program_t &program)
 }
 
 bool simulator::can_step() {
-  return !m_processor_state.active_list.empty() || m_processor_state.pc < m_program.size();
+  return !m_processor_state.exception && (
+    !m_processor_state.active_list.empty() || m_processor_state.pc < m_program.size());
 }
 
 void simulator::step() {
