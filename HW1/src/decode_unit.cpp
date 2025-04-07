@@ -1,3 +1,4 @@
+#include <iostream>
 #include <string>
 #include "decode_unit.h"
 
@@ -18,7 +19,8 @@ void decode_unit::step(processor_state& state, const program_t& program) {
   }
 
   // fetch the next instructions to decode
-  for (uint32_t i = 0; i < max_decode_instructions; ++i) {
+  for (uint32_t i = 0; state.pc < program.size() && i < max_decode_instructions; ++i) {
+    std::cout << "decoding instruction at pc: " << state.pc << '\n';
     state.decoded_pcs.push_back({
       state.pc,
       decode(program[state.pc]),
