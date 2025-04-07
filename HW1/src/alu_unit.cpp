@@ -12,6 +12,13 @@ void alu_unit::step(processor_state &state) {
   if (state.alu_queues.at(m_alu_id).empty()) {
     return;
   }
+
+  // check if we are in exception mode
+  if (state.exception) {
+    clear(state);
+    return;
+  }
+
   std::cout << "alu " << m_alu_id << " executing " << state.alu_queues.at(m_alu_id).front().pc << '\n';
 
   // get the instruction
@@ -58,4 +65,11 @@ void alu_unit::step(processor_state &state) {
 
   // push the result to the result queue
   state.alu_results.at(m_alu_id).push(result);
+}
+
+void alu_unit::clear(processor_state& state) {
+  // clear the result queue
+  while (!state.alu_results.at(m_alu_id).empty()) {
+    state.alu_results.at(m_alu_id).pop();
+  }
 }

@@ -25,9 +25,12 @@ processor_state::processor_state() {
   alu_results.resize(num_alus);
 }
 
+/* Helper function to lookup the value of a register from the ALU forward results. Returns
+ * std::nullopt if the register is not found or if the result is an exception.
+ */
 std::optional<operand_t> processor_state::lookup_from_alu_forward_results(reg_t reg_tag) const {
   for (auto& alu_result : alu_forward_results) {
-    if (alu_result.dest_register == reg_tag) {
+    if (alu_result.dest_register == reg_tag && !alu_result.exception) {
       return alu_result.result;
     }
   }

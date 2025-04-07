@@ -1,4 +1,5 @@
 #include "simulator.h"
+#include <iostream>
 
 simulator::simulator(const program_t &program)
   : m_program(program) {
@@ -9,9 +10,10 @@ simulator::simulator(const program_t &program)
   }
 }
 
-bool simulator::can_step() {
-  return !m_processor_state.exception && (
-    !m_processor_state.active_list.empty() || m_processor_state.pc < m_program.size());
+bool simulator::can_step() const {
+  return m_processor_state.exception
+    || !m_processor_state.active_list.empty()
+    || m_processor_state.pc < m_program.size();
 }
 
 void simulator::step() {
@@ -20,6 +22,17 @@ void simulator::step() {
     return;
   }
 
+  // check if we have an exception
+  if (m_processor_state.exception) {
+    std::cout << "stepping exception...\n";
+    exception_step();
+  } else {
+    std::cout << "stepping normal...\n";
+    normal_step();
+  }
+}
+
+void simulator::normal_step() {
   // process forwarding
   m_forward_unit.step(m_processor_state);
   m_commit_unit.step(m_processor_state);
@@ -31,6 +44,10 @@ void simulator::step() {
   m_decode_unit.step(m_processor_state, m_program);
 }
 
-json simulator::get_json_state() {
+void simulator::exception_step() {
+  m_commit_unit.exception_step(m_processor_state);
+}
+
+json simulator::get_json_state() const {
   return m_processor_state.to_json();
 }

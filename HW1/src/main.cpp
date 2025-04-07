@@ -51,7 +51,9 @@ int main(int argc, char *argv[]) {
   // step through the simulator
   json::array_t states;
   states.push_back(sim.get_json_state());
+  uint32_t i = 0;
   while (sim.can_step()) {
+    std::cout << "---------- cycle " << i++ << " ----------" << std::endl;
     sim.step();
     states.push_back(sim.get_json_state());
   }

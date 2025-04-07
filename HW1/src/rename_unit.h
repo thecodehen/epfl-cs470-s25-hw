@@ -9,6 +9,8 @@
 class rename_unit {
 public:
   void step(processor_state& state);
+private:
+  void clear(processor_state& state);
 };
 
 

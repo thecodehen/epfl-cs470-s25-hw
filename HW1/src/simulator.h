@@ -17,10 +17,12 @@
 class simulator {
 public:
   explicit simulator(const program_t &program);
-  bool can_step();
+  bool can_step() const;
   void step();
-  json get_json_state();
+  json get_json_state() const;
 private:
+  void normal_step();
+  void exception_step();
   program_t m_program;
   processor_state m_processor_state;
   decode_unit m_decode_unit;

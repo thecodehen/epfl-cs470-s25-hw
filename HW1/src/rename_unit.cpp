@@ -9,7 +9,8 @@ void rename_unit::step(processor_state& state) {
   }
 
   if (state.exception) {
-    state.integer_queue.clear();
+    clear(state);
+    return;
   }
 
   // check if we have available space in the active list and integer queue
@@ -96,4 +97,8 @@ void rename_unit::step(processor_state& state) {
     };
     state.integer_queue.emplace_back(integer_queue_entry);
   }
+}
+
+void rename_unit::clear(processor_state& state) {
+  state.integer_queue.clear();
 }

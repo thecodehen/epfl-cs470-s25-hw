@@ -8,6 +8,12 @@ void issue_unit::step(processor_state& state) {
     return;
   }
 
+  // check if we have an exception
+  if (state.exception) {
+    state.integer_queue.clear();
+    return;
+  }
+
   // forward results from ALU
   forward_from_alu_results(state);
 
@@ -34,6 +40,7 @@ void issue_unit::step(processor_state& state) {
 
       // remove the instruction from the integer queue if issued
       if (should_remove) {
+        std::cout << "issuing instruction at pc: " << entry.pc << '\n';
         it = state.integer_queue.erase(it);
       }
     }
