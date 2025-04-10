@@ -23,17 +23,19 @@ class Simulator:
         self.exception_pc = 0
         self.pc = 0
 
+        self.__exception = False
+
     def step(self, instruction: str):
         """
         Execute a single instruction.
         :param instruction: A list containing the instruction components.
         """
+        if self.__exception:
+            return
+
         instruction = parse_instruction(instruction)
         opcode, dest, op_a, op_b = instruction
         self.pc += 1
-
-        if self.exception:
-            return
 
         if opcode == "add":
             self.registers[dest] = self.registers[op_a] + self.registers[op_b]
@@ -45,16 +47,16 @@ class Simulator:
             self.registers[dest] = self.registers[op_a] * self.registers[op_b]
         elif opcode == "divu":
             if self.registers[op_b] == 0:
-                self.exception = True
-                self.exception_pc = self.pc
-                self.pc = 0x10000
+                self.__exception = True
+                self.exception_pc = self.pc - 1
+                self.pc = int("0x10000", 16)
             else:
                 self.registers[dest] = self.registers[op_a] // self.registers[op_b]
         elif opcode == "remu":
             if self.registers[op_b] == 0:
-                self.exception = True
-                self.exception_pc = self.pc
-                self.pc = 0x10000
+                self.__exception = True
+                self.exception_pc = self.pc - 1
+                self.pc = int("0x10000", 16)
             else:
                 self.registers[dest] = self.registers[op_a] % self.registers[op_b]
         else:
