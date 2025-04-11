@@ -28,6 +28,7 @@ public:
   std::list<integer_queue_entry_t> integer_queue;
 
   // non-visible states
+  bool has_exception {}; // indicates if we have encountered an exception before
   std::vector<std::queue<alu_queue_entry_t>> alu_queues; // similar to register 3
   std::vector<std::queue<alu_result_t>> alu_results; // similar to register 4
   std::vector<alu_result_t> alu_forward_results; // represents the wires in the forwarding path

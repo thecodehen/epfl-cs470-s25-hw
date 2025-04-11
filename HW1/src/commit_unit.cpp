@@ -23,6 +23,7 @@ void commit_unit::step(processor_state& state) {
     // check if we have an exception
     if (active_list_entry.exception) {
       std::cout << "exception! pc: " << active_list_entry.pc << "\n";
+      state.has_exception = true;
       state.exception = true;
       state.exception_pc = active_list_entry.pc;
       state.pc = exception_pc_addr;
