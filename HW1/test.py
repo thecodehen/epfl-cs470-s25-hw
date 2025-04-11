@@ -1,6 +1,8 @@
 import argparse
 import numpy as np
 import json
+import pathlib
+import random
 import subprocess
 
 num_registers = 32
@@ -93,6 +95,70 @@ def check(simulator: Simulator, output_data: dict):
 
     return True
 
+def generate_program(max_instructions=100):
+    """
+    Generate a random program with a given number of instructions.
+    :param max_instructions: Maximum number of instructions to generate.
+    :return: A list of instructions.
+    """
+    instructions = []
+    for _ in range(random.randint(1, max_instructions)):
+        opcode = random.choice(["add", "addi", "sub", "mulu", "divu", "remu"])
+        dest = f"x{random.randint(0, num_registers - 1)}"
+        op_a = f"x{random.randint(0, num_registers - 1)}"
+        op_b = f"x{random.randint(0, num_registers - 1)}"
+        if opcode == "addi":
+            op_b = np.int64(random.randint(-2 ** 63, 2 ** 63 - 1))
+        instructions.append(f"{opcode} {dest}, {op_a}, {op_b}")
+    return instructions
+
+def fuzz_test():
+    """
+    Fuzz test the simulator by generating random programs and checking the output.
+    """
+    parser = argparse.ArgumentParser(description="Test script to test the simulator")
+    parser.add_argument('--binary', type=str, default="build/simulate",
+                        help='Path to the binary to run')
+    parser.add_argument('--max_instructions', type=int, default=50,
+                        help='Maximum number of instructions to generate')
+    parser.add_argument('--num_tests', type=int, default=10,
+                        help='Number of tests to run')
+    args = parser.parse_args()
+
+    tests_path = pathlib.Path('tests')
+
+    for i in range(args.num_tests):
+        # Generate a random program
+        instructions = generate_program(max_instructions=args.max_instructions)
+
+        # Write the instructions to a JSON file
+        filename = f"test_{i:05d}.json"
+        with open(tests_path / filename, 'w') as f:
+            json.dump(instructions, f, indent=4)
+        # # Read the instructions from a JSON file
+        # filename = f"test_{i:05d}.json"
+        # with open(tests_path / filename, 'r') as f:
+        #     instructions = json.load(f)
+
+        simulator = Simulator()
+
+        for instruction in instructions:
+            simulator.step(instruction)
+
+        # Run the simulator
+        output_filepath = tests_path / 'out' / filename
+        subprocess.run([args.binary, tests_path / filename, output_filepath], stdout=subprocess.DEVNULL)
+
+        # Read the output JSON file
+        with open(output_filepath, 'r') as f:
+            output_data = json.load(f)
+
+        # Check the output
+        if check(simulator, output_data[-1]):
+            print(f"All checks for {i} passed.")
+        else:
+            print(f"Some checks for {i} failed.")
+
 def main():
     parser = argparse.ArgumentParser(description="Test script to test the simulator")
     parser.add_argument('input', type=str, help="Input json path")
@@ -124,4 +190,5 @@ def main():
         print("Some checks failed.")
 
 if __name__ == "__main__":
-    main()
+    # main()
+    fuzz_test()
