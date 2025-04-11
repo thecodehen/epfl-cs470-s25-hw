@@ -59,7 +59,7 @@ void rename_unit::step(processor_state& state) {
     } else {
       // look up the value of the second operand
       op_b_reg_tag = state.register_map_table.at(instr.op_b);
-      std::optional<operand_t> result = state.lookup_from_alu_forward_results(op_b_reg_tag);
+      result = state.lookup_from_alu_forward_results(op_b_reg_tag);
       if (!state.busy_bit_table.at(op_b_reg_tag)) {
         op_b_is_ready = true;
         op_b_value = state.physical_register_file.at(op_b_reg_tag);
