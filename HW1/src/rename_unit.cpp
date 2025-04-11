@@ -22,6 +22,11 @@ void rename_unit::step(processor_state& state) {
     return;
   }
 
+  // check if we have enough registers in the free list
+  if (state.free_list.size() < num_instructions_to_rename) {
+    return;
+  }
+
   // rename the next instructions
   for (uint32_t i = 0; i < num_instructions_to_rename; ++i) {
     // get the next instruction to rename
