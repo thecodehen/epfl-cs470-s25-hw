@@ -193,7 +193,7 @@ def fuzz_test(args: argparse.Namespace):
     """
     Fuzz test the simulator by generating random programs and checking the output.
     """
-    tests_path = pathlib.Path('tests')
+    (args.tests_path / 'out').mkdir(parents=True, exist_ok=True)
 
     for i in range(args.num_tests):
         # Generate a random program
@@ -204,12 +204,8 @@ def fuzz_test(args: argparse.Namespace):
 
         # Write the instructions to a JSON file
         filename = f"test_{i:05d}.json"
-        with open(tests_path / filename, 'w') as f:
+        with open(args.tests_path / filename, 'w') as f:
             json.dump(instructions, f, indent=4)
-        # # Read the instructions from a JSON file
-        # filename = f"test_{i:05d}.json"
-        # with open(tests_path / filename, 'r') as f:
-        #     instructions = json.load(f)
 
         simulator = Simulator()
 
@@ -217,8 +213,8 @@ def fuzz_test(args: argparse.Namespace):
             simulator.step(instruction)
 
         # Run the simulator
-        output_filepath = tests_path / 'out' / filename
-        subprocess.run([args.binary, tests_path / filename, output_filepath], stdout=subprocess.DEVNULL)
+        output_filepath = args.tests_path / 'out' / filename
+        subprocess.run([args.binary, args.tests_path / filename, output_filepath], stdout=subprocess.DEVNULL)
 
         # Read the output JSON file
         with open(output_filepath, 'r') as f:
@@ -281,7 +277,8 @@ def compare(args: argparse.Namespace):
     :param args:
     :return:
     """
-    tests_path = pathlib.Path('tests')
+    (args.tests_path / 'out').mkdir(parents=True, exist_ok=True)
+    (args.tests_path / 'ref_out').mkdir(parents=True, exist_ok=True)
 
     for i in range(args.num_tests):
         # Generate a random program
@@ -292,16 +289,16 @@ def compare(args: argparse.Namespace):
 
         # Write the instructions to a JSON file
         filename = f"test_{i:05d}.json"
-        with open(tests_path / filename, 'w') as f:
+        with open(args.tests_path / filename, 'w') as f:
             json.dump(instructions, f, indent=4)
 
         # Run our simulator
-        output_filepath = tests_path / 'out' / filename
-        subprocess.run([args.binary, tests_path / filename, output_filepath], stdout=subprocess.DEVNULL)
+        output_filepath = args.tests_path / 'out' / filename
+        subprocess.run([args.binary, args.tests_path / filename, output_filepath], stdout=subprocess.DEVNULL)
 
         # Run the reference simulator
-        ref_output_filepath = tests_path / 'ref_out' / filename
-        ref_cmd = args.ref_cmd.format(input=tests_path / filename, output=ref_output_filepath)
+        ref_output_filepath = args.tests_path / 'ref_out' / filename
+        ref_cmd = args.ref_cmd.format(input=args.tests_path / filename, output=ref_output_filepath)
         subprocess.run(ref_cmd.split(), stdout=subprocess.DEVNULL)
 
         # Run the compare script
@@ -326,7 +323,12 @@ def main():
                         help='Path to the output JSON file to check')
     parser.add_argument('--register', type=str,
                         help='Register to check')
+    parser.add_argument('--tests_path', type=str, default='tests',
+                        help='Path to the tests directory')
     args = parser.parse_args()
+
+    args.tests_path = pathlib.Path(args.tests_path)
+    args.tests_path.mkdir(parents=True, exist_ok=True)
 
     if args.action == 'fuzz':
         fuzz_test(args)
