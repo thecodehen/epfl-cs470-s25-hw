@@ -3,7 +3,6 @@
 
 
 
-#include "common.h"
 #include "processor_state.h"
 
 class commit_unit {
