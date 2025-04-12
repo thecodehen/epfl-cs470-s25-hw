@@ -122,15 +122,18 @@ def check(simulator: Simulator, output_data: dict):
 
     return True
 
-def generate_program(max_instructions=100):
+def generate_program(max_instructions=100, opcodes=None):
     """
     Generate a random program with a given number of instructions.
+    :param opcodes: List of opcodes to use. If None, use all available opcodes.
     :param max_instructions: Maximum number of instructions to generate.
     :return: A list of instructions.
     """
+    if opcodes is None:
+        opcodes = ["add", "addi", "sub", "mulu", "divu", "remu"]
     instructions = []
     for _ in range(random.randint(1, max_instructions)):
-        opcode = random.choice(["add", "addi", "sub", "mulu", "divu", "remu"])
+        opcode = random.choice(opcodes)
         dest = f"x{random.randint(0, num_registers - 1)}"
         op_a = f"x{random.randint(0, num_registers - 1)}"
         op_b = f"x{random.randint(0, num_registers - 1)}"
@@ -150,13 +153,17 @@ def fuzz_test():
                         help='Maximum number of instructions to generate')
     parser.add_argument('--num_tests', type=int, default=10,
                         help='Number of tests to run')
+    parser.add_argument('--opcodes', type=str, nargs='+', default=["add", "addi", "sub", "mulu", "divu", "remu"],)
     args = parser.parse_args()
 
     tests_path = pathlib.Path('tests')
 
     for i in range(args.num_tests):
         # Generate a random program
-        instructions = generate_program(max_instructions=args.max_instructions)
+        instructions = generate_program(
+            opcodes=args.opcodes,
+            max_instructions=args.max_instructions,
+        )
 
         # Write the instructions to a JSON file
         filename = f"test_{i:05d}.json"
