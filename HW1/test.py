@@ -17,6 +17,17 @@ def parse_instruction(instruction):
         parts[-1] = np.int64(parts[-1])
     return parts
 
+class bcolors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
 class Simulator:
     def __init__(self):
         self.registers = {}
@@ -25,6 +36,7 @@ class Simulator:
         self.exception = False
         self.exception_pc = 0
         self.pc = 0
+        self.trace = [self.registers.copy()]
 
         self.__exception = False
 
@@ -41,13 +53,41 @@ class Simulator:
         self.pc += 1
 
         if opcode == "add":
-            self.registers[dest] = self.registers[op_a] + self.registers[op_b]
+            with np.errstate(over="raise"):
+                try:
+                    self.registers[op_a] + self.registers[op_b]
+                except FloatingPointError:
+                    print(f"Overflow at PC {self.pc}: {instruction}")
+
+            with np.errstate(over="ignore"):
+                self.registers[dest] = self.registers[op_a] + self.registers[op_b]
         elif opcode == "addi":
-            self.registers[dest] = self.registers[op_a] + op_b.astype(np.uint64)
+            with np.errstate(over="raise"):
+                try:
+                    self.registers[op_a] + op_b
+                except FloatingPointError:
+                    print(f"Overflow at PC {self.pc}: {instruction}")
+
+            with np.errstate(over="ignore"):
+                self.registers[dest] = self.registers[op_a] + op_b.astype(np.uint64)
         elif opcode == "sub":
-            self.registers[dest] = self.registers[op_a] - self.registers[op_b]
+            with np.errstate(over="raise", under="raise"):
+                try:
+                    self.registers[op_a] - self.registers[op_b]
+                except FloatingPointError:
+                    print(f"Underflow at PC {self.pc}: {instruction}")
+
+            with np.errstate(over="ignore", under="ignore"):
+                self.registers[dest] = self.registers[op_a] - self.registers[op_b]
         elif opcode == "mulu":
-            self.registers[dest] = self.registers[op_a] * self.registers[op_b]
+            with np.errstate(over="raise"):
+                try:
+                    self.registers[op_a] * self.registers[op_b]
+                except FloatingPointError:
+                    print(f"Overflow at PC {self.pc}: {instruction}")
+
+            with np.errstate(over="ignore"):
+                self.registers[dest] = self.registers[op_a] * self.registers[op_b]
         elif opcode == "divu":
             if self.registers[op_b] == 0:
                 self.__exception = True
@@ -64,6 +104,9 @@ class Simulator:
                 self.registers[dest] = self.registers[op_a] % self.registers[op_b]
         else:
             raise ValueError(f"Unknown opcode: {opcode}")
+
+        # Update the trace
+        self.trace.append(self.registers.copy())
 
 def check(simulator: Simulator, output_data: dict):
     if output_data["PC"] != simulator.pc:
@@ -138,24 +181,14 @@ def generate_program(max_instructions=100, opcodes=None):
         op_a = f"x{random.randint(0, num_registers - 1)}"
         op_b = f"x{random.randint(0, num_registers - 1)}"
         if opcode == "addi":
-            op_b = np.int64(random.randint(-2 ** 63, 2 ** 63 - 1))
+            op_b = random.randint(-2 ** 63, 2 ** 63 - 1)
         instructions.append(f"{opcode} {dest}, {op_a}, {op_b}")
     return instructions
 
-def fuzz_test():
+def fuzz_test(args: argparse.Namespace):
     """
     Fuzz test the simulator by generating random programs and checking the output.
     """
-    parser = argparse.ArgumentParser(description="Test script to test the simulator")
-    parser.add_argument('--binary', type=str, default="build/simulate",
-                        help='Path to the binary to run')
-    parser.add_argument('--max_instructions', type=int, default=50,
-                        help='Maximum number of instructions to generate')
-    parser.add_argument('--num_tests', type=int, default=10,
-                        help='Number of tests to run')
-    parser.add_argument('--opcodes', type=str, nargs='+', default=["add", "addi", "sub", "mulu", "divu", "remu"],)
-    args = parser.parse_args()
-
     tests_path = pathlib.Path('tests')
 
     for i in range(args.num_tests):
@@ -189,29 +222,24 @@ def fuzz_test():
 
         # Check the output
         if check(simulator, output_data[-1]):
-            print(f"All checks for {i} passed.")
+            print(f"{bcolors.OKGREEN}All checks for {i} passed.{bcolors.ENDC}")
         else:
-            print(f"Some checks for {i} failed.")
+            print(f"{bcolors.FAIL}Some checks for {i} failed.{bcolors.ENDC}")
 
-def main():
-    parser = argparse.ArgumentParser(description="Test script to test the simulator")
-    parser.add_argument('input', type=str, help="Input json path")
-    parser.add_argument('output', type=str, help="Output json path")
-    parser.add_argument('--binary', type=str, default="build/simulate",
-                        help='Path to the binary to run')
-    args = parser.parse_args()
-
-    # Read the input JSON file
+def check_test(args: argparse.Namespace):
+    """
+    Check the output of the simulator against a reference output.
+    """
     with open(args.input, 'r') as f:
-        input_data = json.load(f)
+        instructions = json.load(f)
 
     simulator = Simulator()
 
-    for instruction in input_data:
+    for instruction in instructions:
         simulator.step(instruction)
 
     # Run the simulator
-    subprocess.run([args.binary, args.input, args.output])
+    subprocess.run([args.binary, args.input, args.output], stdout=subprocess.DEVNULL)
 
     # Read the output JSON file
     with open(args.output, 'r') as f:
@@ -219,10 +247,56 @@ def main():
 
     # Check the output
     if check(simulator, output_data[-1]):
-        print("All checks passed.")
+        print(f"{bcolors.OKGREEN}All checks passed.{bcolors.ENDC}")
     else:
-        print("Some checks failed.")
+        print(f"{bcolors.FAIL}Some checks failed.{bcolors.ENDC}")
+
+def trace(args: argparse.Namespace):
+    """
+    Print the trace of the simulator.
+    """
+    with open(args.input, 'r') as f:
+        instructions = json.load(f)
+
+    simulator = Simulator()
+
+    for instruction in instructions:
+        simulator.step(instruction)
+
+    # Print the trace
+    print("Trace:")
+    for i, regs in enumerate(simulator.trace):
+        if args.register is not None:
+            print(f"Step {i}: {args.register}={regs[args.register]}")
+        else:
+            print(f"Step {i}: {regs}")
+
+def main():
+    parser = argparse.ArgumentParser(description="Test script to test the simulator")
+    parser.add_argument('action', type=str, choices=['fuzz', 'check', 'trace'],)
+    parser.add_argument('--binary', type=str, default="build/simulate",
+                        help='Path to the binary to run')
+    parser.add_argument('--max_instructions', type=int, default=50,
+                        help='Maximum number of instructions to generate')
+    parser.add_argument('--num_tests', type=int, default=10,
+                        help='Number of tests to run')
+    parser.add_argument('--opcodes', type=str, nargs='+', default=["add", "addi", "sub", "mulu", "divu", "remu"],)
+    parser.add_argument('--input', type=str,
+                        help='Path to the input JSON file to check')
+    parser.add_argument('--output', type=str,
+                        help='Path to the output JSON file to check')
+    parser.add_argument('--register', type=str,
+                        help='Register to check')
+    args = parser.parse_args()
+
+    if args.action == 'fuzz':
+        fuzz_test(args)
+    elif args.action == 'check':
+        check_test(args)
+    elif args.action == 'trace':
+        trace(args)
+    else:
+        raise ValueError(f"Unknown action: {args.action}")
 
 if __name__ == "__main__":
-    # main()
-    fuzz_test()
+    main()
