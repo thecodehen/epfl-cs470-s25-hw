@@ -275,11 +275,46 @@ def trace(args: argparse.Namespace):
         else:
             print(f"Step {i}: {regs}")
 
+def compare(args: argparse.Namespace):
+    """
+    Compare the output of two simulators.
+    :param args:
+    :return:
+    """
+    tests_path = pathlib.Path('tests')
+
+    for i in range(args.num_tests):
+        # Generate a random program
+        instructions = generate_program(
+            opcodes=args.opcodes,
+            max_instructions=args.max_instructions,
+        )
+
+        # Write the instructions to a JSON file
+        filename = f"test_{i:05d}.json"
+        with open(tests_path / filename, 'w') as f:
+            json.dump(instructions, f, indent=4)
+
+        # Run our simulator
+        output_filepath = tests_path / 'out' / filename
+        subprocess.run([args.binary, tests_path / filename, output_filepath], stdout=subprocess.DEVNULL)
+
+        # Run the reference simulator
+        ref_output_filepath = tests_path / 'ref_out' / filename
+        ref_cmd = args.ref_cmd.format(input=tests_path / filename, output=ref_output_filepath)
+        subprocess.run(ref_cmd.split(), stdout=subprocess.DEVNULL)
+
+        # Run the compare script
+        print(f"Comparing {output_filepath} and {ref_output_filepath}")
+        subprocess.run(["python3", "compare.py", output_filepath, '-r', ref_output_filepath])
+
 def main():
     parser = argparse.ArgumentParser(description="Test script to test the simulator")
-    parser.add_argument('action', type=str, choices=['fuzz', 'check', 'trace'],)
+    parser.add_argument('action', type=str, choices=['fuzz', 'check', 'compare', 'trace'],)
     parser.add_argument('--binary', type=str, default="build/simulate",
                         help='Path to the binary to run')
+    parser.add_argument('--ref_cmd', type=str, default="build/simulate {input} {output}",
+                        help='Command to run the reference binary, with {input} and {output} placeholders')
     parser.add_argument('--max_instructions', type=int, default=50,
                         help='Maximum number of instructions to generate')
     parser.add_argument('--num_tests', type=int, default=10,
@@ -297,6 +332,8 @@ def main():
         fuzz_test(args)
     elif args.action == 'check':
         check_test(args)
+    elif args.action == 'compare':
+        compare(args)
     elif args.action == 'trace':
         trace(args)
     else:
