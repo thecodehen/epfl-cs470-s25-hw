@@ -10,7 +10,6 @@ void issue_unit::step(processor_state& state) {
 
   // check if we have an exception
   if (state.exception) {
-    state.integer_queue.clear();
     return;
   }
 

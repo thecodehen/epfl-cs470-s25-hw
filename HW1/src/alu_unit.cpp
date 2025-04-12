@@ -3,6 +3,12 @@
 #include <iostream>
 
 void alu_unit::step(processor_state &state) {
+  // check if we are in exception mode
+  if (state.exception) {
+    clear(state);
+    return;
+  }
+
   // check if we have backpressure
   if (!state.alu_results.at(m_alu_id).empty()) {
     return;
@@ -10,12 +16,6 @@ void alu_unit::step(processor_state &state) {
 
   // check if there are instructions to execute
   if (state.alu_queues.at(m_alu_id).empty()) {
-    return;
-  }
-
-  // check if we are in exception mode
-  if (state.exception) {
-    clear(state);
     return;
   }
 

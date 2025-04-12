@@ -3,13 +3,14 @@
 #include <optional>
 
 void rename_unit::step(processor_state& state) {
-  // check if there is are instructions to rename
-  if (state.decoded_pcs.empty()) {
+  // check for exception first to clear state
+  if (state.exception) {
+    clear(state);
     return;
   }
 
-  if (state.exception) {
-    clear(state);
+  // check if there is are instructions to rename
+  if (state.decoded_pcs.empty()) {
     return;
   }
 

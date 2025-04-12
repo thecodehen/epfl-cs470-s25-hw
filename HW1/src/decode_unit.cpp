@@ -4,13 +4,14 @@
 #include "decode_unit.h"
 
 void decode_unit::step(processor_state& state, const program_t& program) {
-  // check if there is an instruction to decode
-  if (state.pc >= program.size()) {
+  // check if we are in exception mode - we need to check first otherwise we will never clear the decoded_pcs register
+  if (state.exception) {
+    state.decoded_pcs.clear();
     return;
   }
 
-  if (state.exception) {
-    state.decoded_pcs.clear();
+  // check if there is an instruction to decode
+  if (state.pc >= program.size()) {
     return;
   }
 
