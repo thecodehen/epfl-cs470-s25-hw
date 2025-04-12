@@ -53,18 +53,23 @@ void issue_unit::step(processor_state& state) {
 void issue_unit::forward_from_alu_results(processor_state& state) const {
   // loop through all instructions in the active list and check if any is done
   for (auto& entry : state.integer_queue) {
-    std::optional<operand_t> result_a = state.lookup_from_alu_forward_results(entry.op_a_reg_tag);
-    if (result_a.has_value()) {
-      entry.op_a_is_ready = true;
-      entry.op_a_reg_tag = 0;
-      entry.op_a_value = result_a.value();
+    // check if the operand is not ready, thus requiring to check if we have forwarding results ready
+    if (!entry.op_a_is_ready) {
+      std::optional<operand_t> result_a = state.lookup_from_alu_forward_results(entry.op_a_reg_tag);
+      if (result_a.has_value()) {
+        entry.op_a_is_ready = true;
+        entry.op_a_reg_tag = 0;
+        entry.op_a_value = result_a.value();
+      }
     }
 
-    std::optional<operand_t> result_b = state.lookup_from_alu_forward_results(entry.op_b_reg_tag);
-    if (result_b.has_value()) {
-      entry.op_b_is_ready = true;
-      entry.op_b_reg_tag = 0;
-      entry.op_b_value = result_b.value();
+    if (!entry.op_b_is_ready) {
+      std::optional<operand_t> result_b = state.lookup_from_alu_forward_results(entry.op_b_reg_tag);
+      if (result_b.has_value()) {
+        entry.op_b_is_ready = true;
+        entry.op_b_reg_tag = 0;
+        entry.op_b_value = result_b.value();
+      }
     }
   }
 }
