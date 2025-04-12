@@ -6,6 +6,7 @@ import random
 import subprocess
 
 num_registers = 32
+physical_registers = 64
 
 def parse_instruction(instruction):
     instruction = instruction.replace(",", "")
@@ -79,12 +80,38 @@ def check(simulator: Simulator, output_data: dict):
         print(f"Mismatch at ExceptionPC: expected {simulator.exception_pc}, got {output_data['ExceptionPC']}")
         return False
 
+    # Check if the active list is empty
+    if len(output_data["ActiveList"]) != 0:
+        print(f"Mismatch at ActiveList: expected empty, got {output_data['ActiveList']}")
+        return False
+
     # Check if all busybits are false
     for i in range(num_registers):
         if output_data["BusyBitTable"][i] != 0:
             print(f"Mismatch at BusyBitTable: expected 0, got {output_data['BusyBitTable'][i]}")
             return False
 
+    # Check if the decoded PCs are empty
+    if len(output_data["DecodedPCs"]) != 0:
+        print(f"Mismatch at DecodedPCs: expected empty, got {output_data['DecodedPCs']}")
+        return False
+
+    # Check if the FreeList and RegisterMapTable contains all registers
+    if len(output_data["FreeList"]) != num_registers:
+        print(f"Mismatch at FreeList: expected {num_registers}, got {len(output_data['FreeList'])}")
+        return False
+
+    registers = set(output_data["RegisterMapTable"] + output_data["FreeList"])
+    if len(registers) != physical_registers:
+        print(f"Not all physical registers are used: expected {physical_registers}, got {len(registers)}")
+        return False
+
+    # Check if the integer queue is empty
+    if len(output_data["IntegerQueue"]) != 0:
+        print(f"Mismatch at IntegerQueue: expected empty, got {output_data['IntegerQueue']}")
+        return False
+
+    # Check if the logical registers have correct values
     for logical_regi in range(num_registers):
         physical_regi = output_data["RegisterMapTable"][logical_regi]
         output_value = output_data["PhysicalRegisterFile"][physical_regi]
