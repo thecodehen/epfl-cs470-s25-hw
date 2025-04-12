@@ -64,7 +64,7 @@ class Simulator:
         elif opcode == "addi":
             with np.errstate(over="raise"):
                 try:
-                    self.registers[op_a] + op_b
+                    self.registers[op_a] + op_b.astype(np.uint64)
                 except FloatingPointError:
                     print(f"Overflow at PC {self.pc}: {instruction}")
 
@@ -155,13 +155,17 @@ def check(simulator: Simulator, output_data: dict):
         return False
 
     # Check if the logical registers have correct values
+    has_error = False
     for logical_regi in range(num_registers):
         physical_regi = output_data["RegisterMapTable"][logical_regi]
         output_value = output_data["PhysicalRegisterFile"][physical_regi]
 
         if simulator.registers[f"x{logical_regi}"] != output_value:
+            has_error = True
             print(f"Mismatch at register x{logical_regi}: expected {simulator.registers[f'x{logical_regi}']}, got {output_value}")
-            return False
+
+    if has_error:
+        return False
 
     return True
 
