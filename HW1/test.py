@@ -169,17 +169,18 @@ def check(simulator: Simulator, output_data: dict):
 
     return True
 
-def generate_program(max_instructions=100, opcodes=None):
+def generate_program(min_instructions=1, max_instructions=100, opcodes=None):
     """
     Generate a random program with a given number of instructions.
     :param opcodes: List of opcodes to use. If None, use all available opcodes.
+    :param min_instructions: Minimum number of instructions to generate.
     :param max_instructions: Maximum number of instructions to generate.
     :return: A list of instructions.
     """
     if opcodes is None:
         opcodes = ["add", "addi", "sub", "mulu", "divu", "remu"]
     instructions = []
-    for _ in range(random.randint(1, max_instructions)):
+    for _ in range(random.randint(min_instructions, max_instructions)):
         opcode = random.choice(opcodes)
         dest = f"x{random.randint(0, num_registers - 1)}"
         op_a = f"x{random.randint(0, num_registers - 1)}"
@@ -199,6 +200,7 @@ def fuzz_test(args: argparse.Namespace):
         # Generate a random program
         instructions = generate_program(
             opcodes=args.opcodes,
+            min_instructions=args.min_instructions,
             max_instructions=args.max_instructions,
         )
 
@@ -284,6 +286,7 @@ def compare(args: argparse.Namespace):
         # Generate a random program
         instructions = generate_program(
             opcodes=args.opcodes,
+            min_instructions=args.min_instructions,
             max_instructions=args.max_instructions,
         )
 
@@ -312,6 +315,8 @@ def main():
                         help='Path to the binary to run')
     parser.add_argument('--ref_cmd', type=str, default="build/simulate {input} {output}",
                         help='Command to run the reference binary, with {input} and {output} placeholders')
+    parser.add_argument('--min_instructions', type=int, default=1,
+                        help='Minimum number of instructions to generate')
     parser.add_argument('--max_instructions', type=int, default=50,
                         help='Maximum number of instructions to generate')
     parser.add_argument('--num_tests', type=int, default=10,
