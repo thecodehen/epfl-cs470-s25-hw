@@ -36,9 +36,7 @@ void commit_unit::step(processor_state& state) {
     state.active_list.pop_front();
     num_committed_instructions++;
   }
-  if (!state.exception) {
-    propagate_alu_forwarding_results(state);
-  }
+  propagate_alu_forwarding_results(state);
 }
 
 void commit_unit::exception_step(processor_state& state) {
