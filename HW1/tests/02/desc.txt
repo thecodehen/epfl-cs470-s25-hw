@@ -1,0 +1,1 @@
+Check if the done bits are set correctly
