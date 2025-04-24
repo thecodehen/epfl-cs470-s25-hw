@@ -1,8 +1,11 @@
+#include "common.h"
+#include "json.hpp"
+#include "parser.h"
+
 #include <fstream>
 #include <iostream>
 #include <optional>
 #include <string>
-#include "json.hpp"
 
 using json = nlohmann::json;
 
@@ -16,7 +19,7 @@ void write_json(std::ostream& os, const json& data) {
 }
 
 int main(int argc, char *argv[]) {
-  if (argc != 3) {
+  if (argc != 4) {
     std::cerr << "Usage: " << argv[0] << " <input file> <output loop file> <output loop.pip file>" << std::endl;
     return 1;
   }
@@ -43,6 +46,12 @@ int main(int argc, char *argv[]) {
     std::cerr << "Failed to read JSON data from file: " << input_file_name << std::endl;
     return 1;
   }
+
+    Parser parser;
+    std::vector<Instruction> v = parser.parse_program(data.value());
+    for (const auto& instr : v) {
+        std::cout << instr.to_string() << '\n';
+    }
 
   // close files
   input_file.close();
