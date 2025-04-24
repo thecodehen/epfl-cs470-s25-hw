@@ -3,8 +3,11 @@
 
 
 
-class compiler {
+#include "common.h"
 
+class Compiler {
+public:
+    virtual VLIWProgram compile(const Program& program) = 0;
 };
 
 
