@@ -1,3 +1,3 @@
 #!/bin/bash
 
-build/estimate $1 $2 $3
+build/compile $1 $2 $3
