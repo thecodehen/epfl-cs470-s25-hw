@@ -1,8 +1,12 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+#include "json.hpp"
+
 #include <cstdint>
 #include <vector>
+
+using json = nlohmann::json;
 
 enum class Opcode {
     add,
@@ -134,12 +138,33 @@ public:
     }
 };
 
-struct VLIWProgram {
-  std::vector<Instruction> alu0_instructions;
-  std::vector<Instruction> alu1_instructions;
-  std::vector<Instruction> mult_instructions;
-  std::vector<Instruction> mem_instructions;
-  std::vector<Instruction> branch_instructions;
+class VLIWProgram {
+public:
+    std::vector<Instruction> alu0_instructions;
+    std::vector<Instruction> alu1_instructions;
+    std::vector<Instruction> mult_instructions;
+    std::vector<Instruction> mem_instructions;
+    std::vector<Instruction> branch_instructions;
+    json to_json() const {
+        assert(alu0_instructions.size() == alu1_instructions.size());
+        assert(alu0_instructions.size() == mult_instructions.size());
+        assert(alu0_instructions.size() == mem_instructions.size());
+        assert(alu0_instructions.size() == branch_instructions.size());
+        std::size_t size {alu0_instructions.size()};
+
+        json j {json::array()};
+        for (std::size_t i {0}; i < size; ++i) {
+            json instruction {json::array()};
+            instruction.push_back(alu0_instructions[i].to_string());
+            instruction.push_back(alu1_instructions[i].to_string());
+            instruction.push_back(mult_instructions[i].to_string());
+            instruction.push_back(mem_instructions[i].to_string());
+            instruction.push_back(branch_instructions[i].to_string());
+            j.push_back(instruction);
+        }
+
+        return j;
+    }
 };
 
 typedef std::vector<Instruction> Program;

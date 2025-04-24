@@ -1,6 +1,7 @@
 #include "common.h"
 #include "json.hpp"
 #include "loop_compiler.h"
+#include "loop_pip_compiler.h"
 #include "parser.h"
 
 #include <fstream>
@@ -33,10 +34,18 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // open output file
+    // open output loop file
     std::string output_file_name {argv[2]};
-    std::ofstream output_file(output_file_name);
-    if (!output_file.is_open()) {
+    std::ofstream output_loop_file(output_file_name);
+    if (!output_loop_file.is_open()) {
+        std::cerr << "Failed to open file: " << output_file_name << std::endl;
+        return 1;
+    }
+
+    // open output loop.pip file
+    output_file_name = argv[3];
+    std::ofstream output_loop_pip_file(output_file_name);
+    if (!output_loop_pip_file.is_open()) {
         std::cerr << "Failed to open file: " << output_file_name << std::endl;
         return 1;
     }
@@ -53,12 +62,18 @@ int main(int argc, char *argv[]) {
     for (const auto& instr : v) {
         std::cout << instr.to_string() << '\n';
     }
-    LoopCompiler compiler;
-    VLIWProgram program = compiler.compile(v);
+    LoopCompiler loop_compiler;
+    VLIWProgram loop_program = loop_compiler.compile(v);
+    write_json(output_loop_file, loop_program.to_json());
+
+    LoopPipCompiler loop_pip_compiler;
+    VLIWProgram loop_pip_program = loop_pip_compiler.compile(v);
+    write_json(output_loop_pip_file, loop_pip_program.to_json());
 
     // close files
     input_file.close();
-    output_file.close();
+    output_loop_file.close();
+    output_loop_pip_file.close();
 
     return 0;
 }
