@@ -1,5 +1,5 @@
 #include "loop_compiler.h"
 
-VLIWProgram LoopCompiler::compile(const Program& program) {
+VLIWProgram LoopCompiler::compile() {
 	return VLIWProgram{};
 }

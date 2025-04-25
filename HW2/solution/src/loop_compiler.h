@@ -8,7 +8,9 @@
 
 class LoopCompiler : public Compiler {
 public:
-    VLIWProgram compile(const Program& program) override;
+    LoopCompiler(const Program& program)
+        : Compiler{program} {}
+    VLIWProgram compile() override;
 };
 
 

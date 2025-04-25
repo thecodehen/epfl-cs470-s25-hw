@@ -7,7 +7,12 @@
 
 class Compiler {
 public:
-    virtual VLIWProgram compile(const Program& program) = 0;
+    Compiler(const Program& program)
+        : m_program{program} {}
+    virtual VLIWProgram compile() = 0;
+private:
+    uint32_t compute_min_initiation_interval();
+    Program m_program;
 };
 
 

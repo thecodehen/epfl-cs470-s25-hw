@@ -58,16 +58,16 @@ int main(int argc, char *argv[]) {
     }
 
     Parser parser;
-    std::vector<Instruction> v = parser.parse_program(data.value());
+    Program v = parser.parse_program(data.value());
     for (const auto& instr : v) {
         std::cout << instr.to_string() << '\n';
     }
-    LoopCompiler loop_compiler;
-    VLIWProgram loop_program = loop_compiler.compile(v);
+    LoopCompiler loop_compiler{v};
+    VLIWProgram loop_program = loop_compiler.compile();
     write_json(output_loop_file, loop_program.to_json());
 
-    LoopPipCompiler loop_pip_compiler;
-    VLIWProgram loop_pip_program = loop_pip_compiler.compile(v);
+    LoopPipCompiler loop_pip_compiler{v};
+    VLIWProgram loop_pip_program = loop_pip_compiler.compile();
     write_json(output_loop_pip_file, loop_pip_program.to_json());
 
     // close files
