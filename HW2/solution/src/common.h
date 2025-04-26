@@ -25,6 +25,10 @@ enum class Opcode {
 
 constexpr uint32_t num_registers = 96;
 constexpr uint32_t num_predicates = 96;
+constexpr uint32_t num_alu {2};
+constexpr uint32_t num_mult {1};
+constexpr uint32_t num_mem {1};
+constexpr uint32_t num_branch {1};
 constexpr uint32_t lc_id {num_registers};
 constexpr uint32_t ec_id {num_registers + 1};
 

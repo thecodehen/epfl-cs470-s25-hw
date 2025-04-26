@@ -13,5 +13,8 @@ VLIWProgram LoopCompiler::compile() {
         std::cout << "Basic block: " << start << " to " << end << std::endl;
     }
 
+    // compute the minimum initiation interval
+    std::cout << "min II = " << compute_min_initiation_interval() << std::endl;
+
 	return VLIWProgram{};
 }
