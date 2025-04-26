@@ -114,6 +114,9 @@ std::vector<Instruction> Parser::parse_program(
                 instr.imm = 0;
             }
             break;
+        case Opcode::nop:
+            // nothing to do. added for better understanding
+            break;
         default:
             break;
         }
