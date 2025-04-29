@@ -1,5 +1,7 @@
 #include "compiler.h"
 
+#include <iostream>
+
 template<typename T>
 T inline ceil_div(T a, T b) {
     if (a == 0 || b == 0) {
@@ -74,6 +76,53 @@ uint32_t Compiler::compute_min_initiation_interval() const {
     return init_itvl;
 }
 
+std::vector<uint32_t> Compiler::find_instr_dependency(
+    const std::array<int32_t, num_registers_with_special>& producers,
+    const Instruction& instr
+) const {
+    std::vector<uint32_t> results;
+    auto op {instr.op};
+
+    switch (op) {
+    case Opcode::add:
+    case Opcode::sub:
+    case Opcode::mulu: {
+        auto op_a {instr.op_a};
+        auto op_b {instr.op_b};
+        if (producers.at(op_a) >= 0) {
+            results.push_back(producers.at(op_a));
+        }
+        if (producers.at(op_b) >= 0) {
+            results.push_back(producers.at(op_b));
+        }
+        break;
+    }
+    case Opcode::addi:
+    case Opcode::ld:
+    case Opcode::movr: {
+        auto op_a {instr.op_a};
+        if (producers.at(op_a) >= 0) {
+            results.push_back(producers.at(op_a));
+        }
+        break;
+    }
+    case Opcode::st: {
+        auto dest {instr.dest};
+        auto op_a {instr.op_a};
+        if (producers.at(dest) != -1) {
+            results.push_back(producers.at(dest));
+        }
+        if (producers.at(op_a) != -1) {
+            results.push_back(producers.at(op_a));
+        }
+        break;
+    }
+    default:
+        break;
+    }
+    return results;
+}
+
 std::vector<Dependency> Compiler::find_dependencies(std::vector<Block> blocks) const {
     // dependency vector for each instruction
     std::vector<Dependency> result(m_program.size());
@@ -82,7 +131,8 @@ std::vector<Dependency> Compiler::find_dependencies(std::vector<Block> blocks) c
     for (const Block& block : blocks) {
         // producers map a register to the address of the instruction that
         // writes to the register
-        std::vector<int32_t> producers(num_registers_with_special, -1);
+        std::array<int32_t, num_registers_with_special> producers;
+        std::fill(producers.begin(), producers.end(), -1);
 
         // in this for loop, while we update the producers map, we check if the
         // current instruction is a consumer of any producers
@@ -99,45 +149,11 @@ std::vector<Dependency> Compiler::find_dependencies(std::vector<Block> blocks) c
                 producers.at(instr.dest) = i - 1;
             }
 
-            // check if the current instruction is a consumer of any producers
-            auto op {m_program.at(i).op};
-            switch (op) {
-            case Opcode::add:
-            case Opcode::sub:
-            case Opcode::mulu: {
-                auto op_a {m_program.at(i).op_a};
-                auto op_b {m_program.at(i).op_b};
-                if (producers.at(op_a) != -1) {
-                    result.at(i).local.push_back(producers.at(op_a));
-                }
-                if (producers.at(op_b) != -1) {
-                    result.at(i).local.push_back(producers.at(op_b));
-                }
-                break;
-            }
-            case Opcode::addi:
-            case Opcode::ld:
-            case Opcode::movr: {
-                auto op_a {m_program.at(i).op_a};
-                if (producers.at(op_a) != -1) {
-                    result.at(i).local.push_back(producers.at(op_a));
-                }
-                break;
-            }
-            case Opcode::st: {
-                auto dest {m_program.at(i).dest};
-                auto op_a {m_program.at(i).op_a};
-                if (producers.at(dest) != -1) {
-                    result.at(i).local.push_back(producers.at(dest));
-                }
-                if (producers.at(op_a) != -1) {
-                    result.at(i).local.push_back(producers.at(op_a));
-                }
-                break;
-            }
-            default:
-                break;
-            }
+            std::vector<uint32_t> dep = find_instr_dependency(
+                producers,
+                m_program.at(i)
+            );
+            result.at(i).local.insert(result.at(i).local.end(), dep.begin(), dep.end());
         }
     }
 

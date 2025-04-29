@@ -40,6 +40,15 @@ protected:
     std::vector<Dependency> find_dependencies(std::vector<Block> blocks) const;
 
     Program m_program;
+private:
+    /**
+      * Check if the instruction is a consumer of any producers. Returns the
+      * instruction addresses of the producers.
+      */
+    std::vector<uint32_t> find_instr_dependency(
+        const std::array<int32_t, num_registers_with_special>& producers,
+        const Instruction& instr
+    ) const;
 };
 
 
