@@ -1,5 +1,6 @@
 #include "loop_compiler.h"
 
+#include <iomanip>
 #include <iostream>
 
 VLIWProgram LoopCompiler::compile() {
@@ -16,5 +17,17 @@ VLIWProgram LoopCompiler::compile() {
     // compute the minimum initiation interval
     std::cout << "min II = " << compute_min_initiation_interval() << std::endl;
 
-	return VLIWProgram{};
+    // find dependencies
+    auto dependencies = find_dependencies(basic_blocks);
+    for (auto it = dependencies.begin(); it != dependencies.end(); ++it) {
+        std::cout << std::setfill('0') << std::setw(5)
+            << std::distance(dependencies.begin(), it) << ": ";
+        std::cout << "local: ";
+        for (auto i : it->local) {
+            std::cout << i << " ";
+        }
+        std::cout << std::endl;
+    }
+
+    return VLIWProgram{};
 }

@@ -5,6 +5,19 @@
 
 #include "common.h"
 
+/*
+ * Dependency stores the dependencies for a given instruction. The dependencies
+ * are based on the instruction's position in the program.
+ */
+struct Dependency {
+    std::vector<uint64_t> local;
+    std::vector<uint64_t> interloop;
+    std::vector<uint64_t> loop_invariant;
+    std::vector<uint64_t> post_loop;
+};
+
+typedef std::pair<uint64_t, uint64_t> Block;
+
 class Compiler {
 public:
     Compiler(const Program& program)
@@ -19,7 +32,13 @@ protected:
      * The second element of each pair is not included in the basic block, i.e.,
      * [start, end).
      */
-    std::vector<std::pair<uint64_t, uint64_t>> find_basic_blocks() const;
+    std::vector<Block> find_basic_blocks() const;
+
+    /**
+     * Find the dependencies for a given Program.
+     */
+    std::vector<Dependency> find_dependencies(std::vector<Block> blocks) const;
+
     Program m_program;
 };
 

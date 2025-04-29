@@ -8,8 +8,8 @@ T inline ceil_div(T a, T b) {
     return 1 + (a - 1) / b;
 }
 
-std::vector<std::pair<uint64_t, uint64_t>> Compiler::find_basic_blocks() const {
-    std::vector<std::pair<uint64_t, uint64_t>> basic_blocks;
+std::vector<Block> Compiler::find_basic_blocks() const {
+    std::vector<Block> basic_blocks;
 
     // Find the first loop or loop.pip instruction
     const auto it = std::find_if(m_program.begin(), m_program.end(),
@@ -72,4 +72,66 @@ uint32_t Compiler::compute_min_initiation_interval() const {
     init_itvl = std::max(init_itvl, ceil_div(mem_instructions, num_mem));
     init_itvl = std::max(init_itvl, ceil_div(branch_instructions, num_branch));
     return init_itvl;
+}
+
+std::vector<Dependency> Compiler::find_dependencies(std::vector<Block> blocks) const {
+    // dependency vector for each instruction
+    std::vector<Dependency> result(m_program.size());
+
+    // find local dependencies
+    for (const Block& block : blocks) {
+        // producers map a register to the address of the instruction that
+        // writes to the register
+        std::vector<int32_t> producers(num_registers_with_special, -1);
+
+        // in this for loop, while we update the producers map, we check if the
+        // current instruction is a consumer of any producers
+        for (auto i {block.first + 1}; i != block.second; ++i) {
+            // update producer
+            const auto& instr = m_program.at(i - 1);
+            if (instr.op != Opcode::st &&
+                instr.op != Opcode::loop &&
+                instr.op != Opcode::loop_pip &&
+                instr.op != Opcode::nop &&
+                instr.op != Opcode::movp) {
+                // TODO: do we need to exclude movp?
+                assert(instr.dest < num_registers_with_special);
+                producers.at(instr.dest) = i - 1;
+            }
+
+            // check if the current instruction is a consumer of any producers
+            auto op {m_program.at(i).op};
+            switch (op) {
+            case Opcode::add:
+            case Opcode::sub:
+            case Opcode::mulu: {
+                auto op_a {m_program.at(i).op_a};
+                auto op_b {m_program.at(i).op_b};
+                if (producers.at(op_a) != -1) {
+                    result.at(i).local.push_back(producers.at(op_a));
+                }
+                if (producers.at(op_b) != -1) {
+                    result.at(i).local.push_back(producers.at(op_b));
+                }
+                break;
+            }
+            case Opcode::addi:
+            case Opcode::ld:
+            case Opcode::st:
+            case Opcode::movr: {
+                auto op_a {m_program.at(i).op_a};
+                if (producers.at(op_a) != -1) {
+                    result.at(i).local.push_back(producers.at(op_a));
+                }
+                break;
+            }
+            default:
+                break;
+            }
+        }
+    }
+
+    // TODO: find other dependencies
+
+    return result;
 }
