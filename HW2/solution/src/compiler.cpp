@@ -117,9 +117,19 @@ std::vector<Dependency> Compiler::find_dependencies(std::vector<Block> blocks) c
             }
             case Opcode::addi:
             case Opcode::ld:
-            case Opcode::st:
             case Opcode::movr: {
                 auto op_a {m_program.at(i).op_a};
+                if (producers.at(op_a) != -1) {
+                    result.at(i).local.push_back(producers.at(op_a));
+                }
+                break;
+            }
+            case Opcode::st: {
+                auto dest {m_program.at(i).dest};
+                auto op_a {m_program.at(i).op_a};
+                if (producers.at(dest) != -1) {
+                    result.at(i).local.push_back(producers.at(dest));
+                }
                 if (producers.at(op_a) != -1) {
                     result.at(i).local.push_back(producers.at(op_a));
                 }
