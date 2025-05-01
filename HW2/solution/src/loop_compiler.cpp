@@ -169,7 +169,7 @@ void LoopCompiler::append(uint64_t instr_id, uint64_t lowest_time,
     }
     
     // Place instruction in the appropriate slot based on its type
-    uint64_t bundle_idx = std::max(m_bundles.size() - 1, lowest_time);
+    uint64_t bundle_idx = std::max(static_cast<uint64_t>(m_bundles.size() - 1), lowest_time);
     
     // If we need to create a new bundle at a specific position
     while (m_bundles.size() <= bundle_idx) {
