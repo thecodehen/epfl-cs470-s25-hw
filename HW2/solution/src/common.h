@@ -96,6 +96,9 @@ public:
             s += "mov";
             break;
         }
+		if (op == Opcode::nop) {
+			return s;
+		}
         s += " ";
         switch (op) {
         case Opcode::add:
