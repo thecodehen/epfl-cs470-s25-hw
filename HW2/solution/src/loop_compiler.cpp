@@ -1,8 +1,9 @@
 #include "loop_compiler.h"
 
+#include <algorithm>
 #include <iomanip>
 #include <iostream>
-#include <algorithm>
+#include <sstream>
 
 VLIWProgram LoopCompiler::compile() {
     auto basic_blocks = find_basic_blocks();
@@ -22,13 +23,51 @@ VLIWProgram LoopCompiler::compile() {
     auto dependencies = find_dependencies(basic_blocks);
     
     // Debug dependency information
+	constexpr auto width {15};
+	std::cout << std::setfill(' ')
+		<< std::setw(width) << "instr|"
+		<< std::setw(width) << "local|"
+		<< std::setw(width) << "interloop|"
+		<< std::setw(width) << "loop_invar|"
+	    << std::setw(width) << "post_loop|" << '\n';
+	std::cout << std::right << std::setfill('-') << std::setw(width * 5) << "" << '\n';
     for (auto it = dependencies.begin(); it != dependencies.end(); ++it) {
+		std::cout << std::string(width - 6, ' ');
         std::cout << std::setfill('0') << std::setw(5)
-            << std::distance(dependencies.begin(), it) << ": ";
-        std::cout << "local: ";
+            << std::distance(dependencies.begin(), it) << '|';
+		// print local deps
+		std::stringstream ss;
         for (auto i : it->local) {
-            std::cout << i << " ";
+            ss << i << " ";
         }
+		ss << '|';
+		std::cout << std::setfill(' ') << std::setw(width) << ss.str();
+		ss.str(std::string());
+
+		// print interloop deps
+        for (auto i : it->interloop) {
+            ss << i << " ";
+        }
+		ss << '|';
+		std::cout << std::setfill(' ') << std::setw(width) << ss.str();
+		ss.str(std::string());
+
+		// print loop_invariant deps
+		for (auto i : it->loop_invariant) {
+            ss << i << " ";
+        }
+		ss << '|';
+		std::cout << std::setfill(' ') << std::setw(width) << ss.str();
+	    ss.str(std::string());
+
+		// print post_loop deps
+		for (auto i : it->post_loop) {
+            ss << i << " ";
+        }
+		ss << '|';
+		std::cout << std::setfill(' ') << std::setw(width) << ss.str();
+		ss.str(std::string());
+
         std::cout << std::endl;
     }
 
