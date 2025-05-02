@@ -4,6 +4,7 @@
 #include "json.hpp"
 
 #include <cstdint>
+#include <iostream>
 #include <vector>
 
 using json = nlohmann::json;
@@ -158,15 +159,15 @@ public:
         assert(alu0_instructions.size() == branch_instructions.size());
         std::size_t size {alu0_instructions.size()};
 
-        json j {json::array()};
+        auto j = json::array();
         for (std::size_t i {0}; i < size; ++i) {
-            json instruction {json::array()};
-            instruction.push_back(alu0_instructions[i].to_string());
-            instruction.push_back(alu1_instructions[i].to_string());
-            instruction.push_back(mult_instructions[i].to_string());
-            instruction.push_back(mem_instructions[i].to_string());
-            instruction.push_back(branch_instructions[i].to_string());
-            j.push_back(instruction);
+            auto bundle = json::array();
+            bundle.push_back(alu0_instructions[i].to_string());
+            bundle.push_back(alu1_instructions[i].to_string());
+            bundle.push_back(mult_instructions[i].to_string());
+            bundle.push_back(mem_instructions[i].to_string());
+            bundle.push_back(branch_instructions[i].to_string());
+            j.push_back(bundle);
         }
 
         return j;
