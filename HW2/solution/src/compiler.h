@@ -49,6 +49,11 @@ private:
         const std::array<int32_t, num_registers_with_special>& producers,
         const Instruction& instr
     ) const;
+
+    void update_producers(
+        std::array<int32_t, num_registers_with_special>& producers,
+        const int32_t instr_idx
+    ) const;
 };
 
 

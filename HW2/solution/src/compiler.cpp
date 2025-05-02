@@ -123,6 +123,22 @@ std::vector<uint32_t> Compiler::find_instr_dependency(
     return results;
 }
 
+void Compiler::update_producers(
+    std::array<int32_t, num_registers_with_special>& producers,
+    const int32_t instr_idx
+) const {
+    const auto& instr = m_program.at(instr_idx);
+    if (instr.op != Opcode::st &&
+        instr.op != Opcode::loop &&
+        instr.op != Opcode::loop_pip &&
+        instr.op != Opcode::nop &&
+        instr.op != Opcode::movp) {
+        // TODO: do we need to exclude movp?
+        assert(instr.dest < num_registers_with_special);
+        producers.at(instr.dest) = instr_idx;
+    }
+}
+
 std::vector<Dependency> Compiler::find_dependencies(std::vector<Block> blocks) const {
     // dependency vector for each instruction
     std::vector<Dependency> result(m_program.size());
@@ -138,16 +154,7 @@ std::vector<Dependency> Compiler::find_dependencies(std::vector<Block> blocks) c
         // current instruction is a consumer of any producers
         for (auto i {block.first + 1}; i != block.second; ++i) {
             // update producer
-            const auto& instr = m_program.at(i - 1);
-            if (instr.op != Opcode::st &&
-                instr.op != Opcode::loop &&
-                instr.op != Opcode::loop_pip &&
-                instr.op != Opcode::nop &&
-                instr.op != Opcode::movp) {
-                // TODO: do we need to exclude movp?
-                assert(instr.dest < num_registers_with_special);
-                producers.at(instr.dest) = i - 1;
-            }
+            update_producers(producers, i - 1);
 
             std::vector<uint32_t> dep = find_instr_dependency(
                 producers,
@@ -157,7 +164,40 @@ std::vector<Dependency> Compiler::find_dependencies(std::vector<Block> blocks) c
         }
     }
 
-    // TODO: find other dependencies
+	// if there is only one basic block, there are no other dependencies
+	if (blocks.size() == 1) {
+		return result;
+	}
+
+    // find interloop dependencies
+    Block bb0 = blocks.at(0), bb1 = blocks.at(1);
+    std::array<int32_t, num_registers_with_special> producers;
+    std::fill(producers.begin(), producers.end(), -1);
+    for (auto i {bb0.first}; i != bb0.second; ++i) {
+        update_producers(producers, i);
+    }
+    for (auto i {bb1.first}; i != bb1.second; ++i) {
+        const auto& instr = m_program.at(i);
+        std::vector<uint32_t> dep = find_instr_dependency(producers, instr);
+        result.at(i).interloop.insert(
+            result.at(i).interloop.end(),
+            dep.begin(),
+            dep.end()
+        );
+    }
+    std::fill(producers.begin(), producers.end(), -1);
+    for (auto i {bb1.first}; i != bb1.second; ++i) {
+        update_producers(producers, i);
+    }
+    for (auto i {bb1.first}; i != bb1.second; ++i) {
+        const auto& instr = m_program.at(i);
+        std::vector<uint32_t> dep = find_instr_dependency(producers, instr);
+        result.at(i).interloop.insert(
+            result.at(i).interloop.end(),
+            dep.begin(),
+            dep.end()
+        );
+    }
 
     return result;
 }
