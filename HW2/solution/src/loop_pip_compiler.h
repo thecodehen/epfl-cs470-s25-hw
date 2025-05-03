@@ -82,9 +82,9 @@ private:
      * Identical to the non-pipelined version
      * 
      * @param time_table Mapping of instruction IDs to bundle IDs
-     * @return Updated time_table
+     * @return
      */
-    std::vector<uint64_t> schedule_preloop_block(std::vector<uint64_t>& time_table) const;
+    void schedule_preloop_block(std::vector<uint64_t>& time_table) const;
     
     /**
      * Schedules the loop body with pipeline support
@@ -92,18 +92,18 @@ private:
      * Will retry with increased II if scheduling fails
      * 
      * @param time_table Mapping of instruction IDs to bundle IDs
-     * @return Updated time_table
+     * @return
      */
-    std::vector<uint64_t> schedule_loop_body_pipelined(std::vector<uint64_t>& time_table) const;
+    void schedule_loop_body_pipelined(std::vector<uint64_t>& time_table) const;
     
     /**
      * Schedules the post-loop code
      * Similar to non-pipelined version but respects pipeline dependencies
      * 
      * @param time_table Mapping of instruction IDs to bundle IDs
-     * @return Updated time_table
+     * @return
      */
-    std::vector<uint64_t> schedule_postloop_block(std::vector<uint64_t>& time_table) const;
+    void schedule_postloop_block(std::vector<uint64_t>& time_table) const;
     
     /**
      * Helper function for pre-loop code (identical to LoopCompiler::insert_ASAP)

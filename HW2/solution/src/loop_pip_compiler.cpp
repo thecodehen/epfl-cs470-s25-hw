@@ -88,7 +88,7 @@ std::vector<uint64_t> LoopPipCompiler::schedule_with_pipelining(std::vector<Depe
  * Schedules the first basic block (pre-loop code)
  * Identical to the non-pipelined version
  */
-std::vector<uint64_t> LoopPipCompiler::schedule_preloop_block(std::vector<uint64_t>& time_table) const {
+void LoopPipCompiler::schedule_preloop_block(std::vector<uint64_t>& time_table) const {
     auto basic_blocks = find_basic_blocks();
     auto dependencies = find_dependencies(basic_blocks);
     
@@ -110,8 +110,6 @@ std::vector<uint64_t> LoopPipCompiler::schedule_preloop_block(std::vector<uint64
             append_regular_bundle(i, lowest_time, time_table);
         }
     }
-    
-    return time_table;
 }
 
 /**
@@ -220,7 +218,7 @@ void LoopPipCompiler::append_regular_bundle(uint64_t instr_id, uint64_t lowest_t
  * Implements modulo scheduling with resource reservation
  * Will retry with increased II if scheduling fails
  */
-std::vector<uint64_t> LoopPipCompiler::schedule_loop_body_pipelined(std::vector<uint64_t>& time_table) const {
+void LoopPipCompiler::schedule_loop_body_pipelined(std::vector<uint64_t>& time_table) const {
     auto basic_blocks = find_basic_blocks();
     auto dependencies = find_dependencies(basic_blocks);
     
@@ -228,7 +226,7 @@ std::vector<uint64_t> LoopPipCompiler::schedule_loop_body_pipelined(std::vector<
     if (basic_blocks[1].first >= basic_blocks[1].second) {
         m_loop_start_time = m_bundles.size();
         m_loop_end_time = m_bundles.size();
-        return time_table;
+		return;
     }
     
     // Collect all instruction IDs in the loop body
@@ -297,8 +295,6 @@ std::vector<uint64_t> LoopPipCompiler::schedule_loop_body_pipelined(std::vector<
         m_slot_status.push_back({OPEN, OPEN, OPEN, OPEN, OPEN});
         update_resource_reservations();
     }
-    
-    return time_table;
 }
 
 /**
@@ -389,7 +385,7 @@ uint64_t LoopPipCompiler::calculate_time_after_loop(const std::vector<Dependency
  * Schedules the post-loop code
  * Similar to non-pipelined version but respects pipeline dependencies
  */
-std::vector<uint64_t> LoopPipCompiler::schedule_postloop_block(std::vector<uint64_t>& time_table) const {
+void LoopPipCompiler::schedule_postloop_block(std::vector<uint64_t>& time_table) const {
     auto basic_blocks = find_basic_blocks();
     auto dependencies = find_dependencies(basic_blocks);
     
@@ -429,8 +425,6 @@ std::vector<uint64_t> LoopPipCompiler::schedule_postloop_block(std::vector<uint6
             append_regular_bundle(i, lowest_time, time_table);
         }
     }
-    
-    return time_table;
 }
 
 /**
