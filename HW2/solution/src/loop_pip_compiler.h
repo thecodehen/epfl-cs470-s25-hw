@@ -103,7 +103,11 @@ private:
      * @param time_table Mapping of instruction IDs to bundle IDs
      * @return
      */
-    void schedule_loop_body_pipelined(std::vector<uint64_t>& time_table);
+    void schedule_loop_body(
+        std::vector<uint64_t>& time_table,
+        const std::vector<Block>& basic_blocks,
+        const std::vector<Dependency>& dependencies
+        );
     
     /**
      * Schedules the post-loop code

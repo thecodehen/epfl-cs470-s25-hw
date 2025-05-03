@@ -78,7 +78,7 @@ std::vector<uint64_t> LoopPipCompiler::schedule(
     // Then schedule the loop body (BB1) with pipelining
     if (basic_blocks.size() > 1) {
         m_loop_start_time = m_bundles.size(); // Mark start of loop
-        schedule_loop_body_pipelined(time_table);
+        schedule_loop_body(time_table, basic_blocks, dependencies);
         m_loop_end_time = m_bundles.size(); // Mark end of loop
         
         // Finally, schedule post-loop code (BB2)
@@ -126,8 +126,6 @@ void LoopPipCompiler::schedule_asap(
     const uint64_t instr_id,
     const uint64_t lowest_time
     ) {
-    const auto& instr = m_program.at(instr_id);
-    
     // Make sure we have enough bundles to consider
     while (m_bundles.size() <= lowest_time) {
         m_bundles.push_back({nullptr, nullptr, nullptr, nullptr, nullptr});
@@ -213,15 +211,16 @@ bool LoopPipCompiler::try_schedule(
  * Implements modulo scheduling with resource reservation
  * Will retry with increased II if scheduling fails
  */
-void LoopPipCompiler::schedule_loop_body_pipelined(std::vector<uint64_t>& time_table) {
-    auto basic_blocks = find_basic_blocks();
-    auto dependencies = find_dependencies(basic_blocks);
-    
+void LoopPipCompiler::schedule_loop_body(
+    std::vector<uint64_t>& time_table,
+    const std::vector<Block>& basic_blocks,
+    const std::vector<Dependency>& dependencies
+    ) {
     // If BB1 is empty, just set markers and return
     if (basic_blocks[1].first >= basic_blocks[1].second) {
         m_loop_start_time = m_bundles.size();
         m_loop_end_time = m_bundles.size();
-		return;
+        return;
     }
     
     // Collect all instruction IDs in the loop body
@@ -237,8 +236,7 @@ void LoopPipCompiler::schedule_loop_body_pipelined(std::vector<uint64_t>& time_t
     while (true) {
         // Remember current bundle size in case we need to retry
         uint64_t saved_bundle_size = m_bundles.size();
-        bool scheduling_success = true;
-        
+
         // Try to schedule all instructions except the last one (loop instruction)
         for (uint64_t i = basic_blocks[1].first; i < basic_blocks[1].second - 1; ++i) {
             uint64_t lowest_time = calculate_instruction_earliest_time(i, dependencies, time_table, lowest_start_time);
@@ -267,20 +265,20 @@ void LoopPipCompiler::schedule_loop_body_pipelined(std::vector<uint64_t>& time_t
         if (verify_pipeline_dependencies(time_table, loop_instructions)) {
             // Valid schedule found
             break;
-        } else {
-            // Increase II and try again
-            m_initiation_interval++;
-            
-            // Restore bundle size
-            while (m_bundles.size() > saved_bundle_size) {
-                m_bundles.pop_back();
-                m_slot_status.pop_back();
-            }
-            
-            // Clear time table entries for loop instructions
-            for (uint64_t i = basic_blocks[1].first; i < basic_blocks[1].second; ++i) {
-                time_table[i] = UINT64_MAX;
-            }
+        }
+
+        // Increase II and try again
+        m_initiation_interval++;
+
+        // Restore bundle size
+        while (m_bundles.size() > saved_bundle_size) {
+            m_bundles.pop_back();
+            m_slot_status.pop_back();
+        }
+
+        // Clear time table entries for loop instructions
+        for (uint64_t i = basic_blocks[1].first; i < basic_blocks[1].second; ++i) {
+            time_table[i] = UINT64_MAX;
         }
     }
     
