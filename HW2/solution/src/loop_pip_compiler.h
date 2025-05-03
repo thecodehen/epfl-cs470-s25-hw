@@ -200,6 +200,11 @@ private:
      * Adds mov instructions before the loop.pip instruction
      */
     void setup_pipeline_initialization() const;
+
+    void rename(
+        const std::vector<uint64_t> time_table,
+        const std::vector<Dependency> dependencies
+    );
 };
 
 #endif //LOOP_PIP_COMPILER_H
