@@ -72,7 +72,7 @@ std::vector<Instruction> Parser::parse_program(
             instr.dest = std::stoi(dest.substr(1));
 
             // parse immediate and the register storing the address
-            instr.imm = std::stoll(imm_addr);
+            instr.imm = std::stoll(imm_addr, nullptr, 0);
             std::string::size_type pos {imm_addr.find('(')};
             if (pos == std::string::npos) {
                 std::cerr << "Error: Invalid address format in instruction: " \
