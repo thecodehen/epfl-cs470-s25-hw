@@ -197,23 +197,8 @@ void LoopCompiler::append(uint64_t instr_id, uint64_t lowest_time,
                         std::vector<uint64_t>& time_table) const {
     const auto& instr = m_program[instr_id];
     
-    // Make sure we have enough bundles up to lowest_time
-    while (m_bundles.size() <= lowest_time) {
-        m_bundles.push_back({nullptr, nullptr, nullptr, nullptr, nullptr});
-    }
-    
-    // Add a new bundle if needed
-    if (m_bundles.size() <= lowest_time) {
-        m_bundles.push_back({nullptr, nullptr, nullptr, nullptr, nullptr});
-    }
-    
-    // Place instruction in the appropriate slot based on its type
-    uint64_t bundle_idx = std::max(static_cast<uint64_t>(m_bundles.size() - 1), lowest_time);
-    
-    // If we need to create a new bundle at a specific position
-    while (m_bundles.size() <= bundle_idx) {
-        m_bundles.push_back({nullptr, nullptr, nullptr, nullptr, nullptr});
-    }
+    uint64_t bundle_idx = m_bundles.size();
+    m_bundles.emplace_back(Bundle{nullptr,nullptr,nullptr,nullptr,nullptr});
     
     // Determine which functional unit to use based on instruction type
     if (instr.op == Opcode::add || instr.op == Opcode::addi || 
