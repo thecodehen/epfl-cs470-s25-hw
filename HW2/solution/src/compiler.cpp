@@ -165,30 +165,30 @@ std::vector<Dependency> Compiler::find_dependencies(std::vector<Block> blocks) c
         }
     }
 
-	// if there is only one basic block, there are no other dependencies
-	if (blocks.size() == 1) {
-		return result;
-	}
+    // if there is only one basic block, there are no other dependencies
+    if (blocks.size() == 1) {
+        return result;
+    }
 
-	// else there are 3 basic blocks
+    // else there are 3 basic blocks
     Block bb0 = blocks.at(0), bb1 = blocks.at(1), bb2 = blocks.at(2);
 
-	// get all bb0 and bb1 producers
-	// the instruction that bb0_producers map to is the last instruction that produces the register in bb0
+    // get all bb0 and bb1 producers
+    // the instruction that bb0_producers map to is the last instruction that produces the register in bb0
     std::array<int32_t, num_registers_with_special> bb0_producers;
     std::array<int32_t, num_registers_with_special> bb1_producers;
     std::fill(bb0_producers.begin(), bb0_producers.end(), -1);
     std::fill(bb1_producers.begin(), bb1_producers.end(), -1);
-	for (auto i {bb0.first}; i != bb0.second; ++i) {
-		update_producers(bb0_producers, i);
-	}
-	for (auto i {bb1.first}; i != bb1.second; ++i) {
-		update_producers(bb1_producers, i);
-	}
+    for (auto i {bb0.first}; i != bb0.second; ++i) {
+        update_producers(bb0_producers, i);
+    }
+    for (auto i {bb1.first}; i != bb1.second; ++i) {
+        update_producers(bb1_producers, i);
+    }
 
     // find interloop dependencies
-	// dependencies from a previous loop iteration to the next loop iteration
-	// because of that, all interloop dependencies must be produced after the instruction (and also initially produced
+    // dependencies from a previous loop iteration to the next loop iteration
+    // because of that, all interloop dependencies must be produced after the instruction (and also initially produced
     // in bb0)
     std::fill(producers.begin(), producers.end(), -1);
     for (auto i {bb1.second - 1}; i >= bb1.first; --i) {
@@ -202,56 +202,56 @@ std::vector<Dependency> Compiler::find_dependencies(std::vector<Block> blocks) c
         );
 
         // check the extra dependencies from bb0
-		if (!dep.empty()) {
-			std::vector<uint32_t> dep_bb0 = find_instr_dependency(bb0_producers, instr);
-			result.at(i).interloop.insert(
+        if (!dep.empty()) {
+            std::vector<uint32_t> dep_bb0 = find_instr_dependency(bb0_producers, instr);
+	    result.at(i).interloop.insert(
                 result.at(i).interloop.end(),
                 dep_bb0.begin(),
                 dep_bb0.end()
             );
-		}
+        }
     }
 
-	// loop invariant dependencies
-	// these dependencies are produced from bb0, but consumed in bb1 or bb2. They cannot be produced anywhere else
-	// before they are consumed
+    // loop invariant dependencies
+    // these dependencies are produced from bb0, but consumed in bb1 or bb2. They cannot be produced anywhere else
+    // before they are consumed
     for (auto i {bb1.first}; i != bb1.second; ++i) {
         const auto& instr = m_program.at(i);
         std::vector<uint32_t> dep = find_instr_dependency(bb0_producers, instr);
-		std::for_each(dep.begin(), dep.end(), [&](uint32_t d) {
-			// check if the dependency is not produced in bb1 (the loop body)
-			if (std::find(result.at(i).interloop.begin(), result.at(i).interloop.end(), d) != result.at(i).interloop.end()) {
-				return;
-			}
+            std::for_each(dep.begin(), dep.end(), [&](uint32_t d) {
+            // check if the dependency is not produced in bb1 (the loop body)
+            if (std::find(result.at(i).interloop.begin(), result.at(i).interloop.end(), d) != result.at(i).interloop.end()) {
+                return;
+            }
             result.at(i).loop_invariant.push_back(d);
         });
     }
-	for (auto i {bb2.first}; i != bb2.second; ++i) {
+    for (auto i {bb2.first}; i != bb2.second; ++i) {
         const auto& instr = m_program.at(i);
         std::vector<uint32_t> dep = find_instr_dependency(bb0_producers, instr);
         std::for_each(dep.begin(), dep.end(), [&](uint32_t d) {
-			// check if the dependency is not produced in bb1 (the loop body)
-			if (!find_instr_dependency(bb1_producers, instr).empty()) {
+            // check if the dependency is not produced in bb1 (the loop body)
+            if (!find_instr_dependency(bb1_producers, instr).empty()) {
                 return;
-			}
-			// check if the dependency is not produced in bb2 (locally)
-			if (std::find(result.at(i).local.begin(), result.at(i).local.end(), d) != result.at(i).local.end()) {
-				return;
-			}
+            }
+            // check if the dependency is not produced in bb2 (locally)
+            if (std::find(result.at(i).local.begin(), result.at(i).local.end(), d) != result.at(i).local.end()) {
+                return;
+            }
             result.at(i).loop_invariant.push_back(d);
         });
     }
 
-	// post loop dependencies
-	for (auto i {bb2.first}; i != bb2.second; ++i) {
-		const auto& instr = m_program.at(i);
-		std::vector<uint32_t> dep = find_instr_dependency(bb1_producers, instr);
-		result.at(i).post_loop.insert(
+    // post loop dependencies
+    for (auto i {bb2.first}; i != bb2.second; ++i) {
+        const auto& instr = m_program.at(i);
+        std::vector<uint32_t> dep = find_instr_dependency(bb1_producers, instr);
+        result.at(i).post_loop.insert(
             result.at(i).post_loop.end(),
             dep.begin(),
             dep.end()
         );
-	}
+    }
 
     return result;
 }
