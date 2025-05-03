@@ -253,5 +253,20 @@ std::vector<Dependency> Compiler::find_dependencies(std::vector<Block> blocks) c
         );
     }
 
+    // remove duplicate dependencies
+    for (auto& dep : result) {
+        std::sort(dep.local.begin(), dep.local.end());
+        dep.local.erase(std::unique(dep.local.begin(), dep.local.end()), dep.local.end());
+
+        std::sort(dep.interloop.begin(), dep.interloop.end());
+        dep.interloop.erase(std::unique(dep.interloop.begin(), dep.interloop.end()), dep.interloop.end());
+
+        std::sort(dep.loop_invariant.begin(), dep.loop_invariant.end());
+        dep.loop_invariant.erase(std::unique(dep.loop_invariant.begin(), dep.loop_invariant.end()), dep.loop_invariant.end());
+
+        std::sort(dep.post_loop.begin(), dep.post_loop.end());
+        dep.post_loop.erase(std::unique(dep.post_loop.begin(), dep.post_loop.end()), dep.post_loop.end());
+    }
+
     return result;
 }
