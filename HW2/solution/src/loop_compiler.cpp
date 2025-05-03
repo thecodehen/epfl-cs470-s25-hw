@@ -328,7 +328,7 @@ std::vector<uint64_t> LoopCompiler::schedule_bb1(std::vector<uint64_t>& time_tab
     }
     
     // Schedule the loop instruction
-    uint64_t loop_time = m_bundles.size() + time_need_after_loop;
+    uint64_t loop_time = lowest_time_start_loop + time_need_after_loop;
     if (!insert_ASAP(loop_ins_idx, loop_time, time_table)) {
         append(loop_ins_idx, loop_time, time_table);
     }
