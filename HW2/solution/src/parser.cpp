@@ -91,7 +91,7 @@ std::vector<Instruction> Parser::parse_program(
         case Opcode::loop_pip: {
             std::string loop_start;
             ss >> loop_start;
-            instr.imm = std::stoll(loop_start);
+            instr.imm = std::stoll(loop_start, nullptr, 0);
             break;
         }
         case Opcode::movr:
@@ -104,7 +104,7 @@ std::vector<Instruction> Parser::parse_program(
             } else {
                 instr.dest = std::stoi(operand1.substr(1));
             }
-            instr.imm = std::stoll(operand2);
+            instr.imm = std::stoll(operand2, nullptr, 0);
             break;
         case Opcode::movp:
             instr.dest = std::stoi(operand1.substr(1));
