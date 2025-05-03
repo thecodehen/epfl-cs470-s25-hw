@@ -225,6 +225,18 @@ private:
         const std::vector<uint64_t> time_table,
         const std::vector<Dependency> dependencies
     );
+
+    /**
+     * Renames registers in the program based on the loop invariant
+     * dependencies. For some reason, we start allocating non-rotating registers
+     * from x1 instead of x0. This code will directly modify the registers in
+     * m_program.
+     *
+     * @param dependencies Dependency information for all instructions
+     */
+    void rename_loop_invariant(
+        const std::vector<Dependency>& dependencies
+    );
 };
 
 #endif //LOOP_PIP_COMPILER_H
