@@ -1,4 +1,5 @@
 #include "loop_pip_compiler.h"
+
 #include <iostream>
 #include <algorithm>
 
@@ -18,7 +19,7 @@ VLIWProgram LoopPipCompiler::compile() {
     auto dependencies = find_dependencies(basic_blocks);
 
     // Schedule instructions with pipeline support
-    schedule_with_pipelining(dependencies);
+    auto time_table = schedule_with_pipelining(dependencies);
     
     // Organize the pipeline stages
     organize_pipeline_stages();
@@ -28,6 +29,9 @@ VLIWProgram LoopPipCompiler::compile() {
     
     // Add initialization instructions for predicates and EC
     setup_pipeline_initialization();
+
+    // rename registers
+    rename(time_table, dependencies);
 
     // Create the final VLIW program
     VLIWProgram program;
@@ -705,4 +709,29 @@ void LoopPipCompiler::setup_pipeline_initialization() const {
     // For now, we leave this as a placeholder
     // The full implementation would require creating new instructions
     // and inserting them into the schedule
+}
+
+void LoopPipCompiler::rename(
+    const std::vector<uint64_t> time_table,
+    const std::vector<Dependency> dependencies) {
+    // copy the bundles
+    auto bundles = std::vector<std::array<Instruction, 5>>{};
+    for (const auto& bundle : m_bundles) {
+        std::array<Instruction, 5> new_bundle;
+        new_bundle[0] = bundle[0] ? *bundle[0] : Instruction{Opcode::nop};
+        new_bundle[1] = bundle[1] ? *bundle[1] : Instruction{Opcode::nop};
+        new_bundle[2] = bundle[2] ? *bundle[2] : Instruction{Opcode::nop};
+        new_bundle[3] = bundle[3] ? *bundle[3] : Instruction{Opcode::nop};
+        new_bundle[4] = bundle[4] ? *bundle[4] : Instruction{Opcode::nop};
+        bundles.push_back(new_bundle);
+    }
+
+    std::vector<uint32_t> non_rotating_registers(num_non_rotating_registers);
+    std::vector<uint32_t> rotating_registers(num_non_rotating_registers);
+    std::generate(non_rotating_registers.begin(), non_rotating_registers.end(), [i = 0]() mutable {
+        return i++;
+    });
+    std::generate(rotating_registers.begin(), rotating_registers.end(), [i = 0]() mutable {
+        return num_non_rotating_registers + i++;
+    });
 }

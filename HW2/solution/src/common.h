@@ -25,6 +25,8 @@ enum class Opcode {
 };
 
 constexpr uint32_t num_registers = 96;
+constexpr uint32_t num_non_rotating_registers {32};
+constexpr uint32_t num_rotating_registers {num_registers - num_non_rotating_registers};
 constexpr uint32_t num_special_registers = 2; // LC and EC
 constexpr uint32_t num_registers_with_special = num_registers + num_special_registers;
 constexpr uint32_t num_predicates = 96;
