@@ -11,6 +11,8 @@ VLIWProgram LoopPipCompiler::compile() {
     
     // Compute the minimum initiation interval (II)
     m_initiation_interval = compute_min_initiation_interval();
+    if (m_initiation_interval == 0) m_initiation_interval = 1;
+
     
     // Find dependencies between instructions
     auto dependencies = find_dependencies(basic_blocks);
