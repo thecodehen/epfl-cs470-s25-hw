@@ -1,9 +1,13 @@
 #include "loop_compiler.h"
 
 #include <algorithm>
+#include <bitset>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <unordered_map>
+#include <unordered_set>
+#include <memory>
 
 VLIWProgram LoopCompiler::compile() {
     auto basic_blocks = find_basic_blocks();
@@ -72,27 +76,100 @@ VLIWProgram LoopCompiler::compile() {
     }
 
     // Schedule instructions (main scheduling algorithm)
-    schedule(dependencies);
+    auto time_table = schedule(dependencies);
+    
+    // Perform register allocation (allocb algorithm) - do this only ONCE
+    auto [new_dest, new_use] = allocate_registers(dependencies, time_table);
+    
+    // Debug register allocation
+    std::cout << "\nRegister allocation:\n";
+    for (size_t i = 0; i < new_dest.size(); ++i) {
+        if (new_dest[i] > 0) {
+            std::cout << "Instruction " << i << ": x" << new_dest[i] << std::endl;
+        }
+    }
+
+    // Helper function to apply renaming to an instruction
+    auto apply_renaming = [&](int32_t id) -> Instruction {
+        if (id < 0) return Instruction{Opcode::nop};
+        
+        Instruction instr = m_program[id]; // Make a copy
+        
+        if (instr.op == Opcode::nop || 
+            instr.op == Opcode::loop || 
+            instr.op == Opcode::loop_pip) {
+            return instr; // No renaming needed for these
+        }
+        
+        // Apply destination register renaming
+        if (instr.op != Opcode::st && new_dest[id] > 0) {
+            instr.dest = new_dest[id];
+        } else if (instr.op == Opcode::st && new_dest[id] > 0) {
+            // For store, dest is the data to store
+            instr.dest = new_dest[id];
+        }
+        
+        // Apply operand register renaming 
+        auto [op_a, op_b] = new_use[id];
+        
+        // Apply op_a renaming for instructions that use it
+        if (op_a != UINT32_MAX && 
+           (instr.op == Opcode::add || instr.op == Opcode::sub || 
+            instr.op == Opcode::mulu || instr.op == Opcode::addi || 
+            instr.op == Opcode::ld || instr.op == Opcode::st || 
+            instr.op == Opcode::movr)) {
+            instr.op_a = op_a;
+        }
+        
+        // Apply op_b renaming for instructions that use it
+        if (op_b != UINT32_MAX && 
+           (instr.op == Opcode::add || instr.op == Opcode::sub || 
+            instr.op == Opcode::mulu)) {
+            instr.op_b = op_b;
+        }
+        
+        return instr;
+    };
 
     // Create VLIWProgram from bundles
     VLIWProgram program;
     
     // For each bundle, create a VLIW instruction with all functional units
     for (const auto& bundle : m_bundles) {
-        // For each functional unit slot, use the assigned instruction or nop if empty
-        Instruction alu0 = bundle[0] ? *bundle[0] : Instruction{Opcode::nop};
-        Instruction alu1 = bundle[1] ? *bundle[1] : Instruction{Opcode::nop};
-        Instruction mult = bundle[2] ? *bundle[2] : Instruction{Opcode::nop};
-        Instruction mem = bundle[3] ? *bundle[3] : Instruction{Opcode::nop};
-        Instruction branch = bundle[4] ? *bundle[4] : Instruction{Opcode::nop};
-        
-        // Add this cycle's instructions to the final program
+        Instruction alu0 = Instruction{Opcode::nop};
+        Instruction alu1 = Instruction{Opcode::nop};
+        Instruction mult = Instruction{Opcode::nop};
+        Instruction mem  = Instruction{Opcode::nop};
+        Instruction br   = Instruction{Opcode::nop};
+
+        for (int fu = 0; fu < 5; ++fu) {
+            int instr_id = bundle[fu];
+            if (instr_id < 0) continue;
+
+            Instruction inst = apply_renaming(instr_id);
+            // If it was a special LC/EC write, preserve that:
+            if (m_program[instr_id].dest == lc_id) {
+              inst.dest = lc_id;
+            } else if (m_program[instr_id].dest == ec_id) {
+              inst.dest = ec_id;
+            }
+            // Assign to correct slot
+            switch (fu) {
+                case 0: alu0 = inst; break;
+                case 1: alu1 = inst; break;
+                case 2: mult = inst; break;
+                case 3: mem  = inst; break;
+                case 4: br   = inst; break;
+            }
+        }
+
         program.alu0_instructions.push_back(alu0);
         program.alu1_instructions.push_back(alu1);
         program.mult_instructions.push_back(mult);
         program.mem_instructions.push_back(mem);
-        program.branch_instructions.push_back(branch);
+        program.branch_instructions.push_back(br);
     }
+
     
     return program;
 }
@@ -139,7 +216,7 @@ bool LoopCompiler::insert_ASAP(uint64_t instr_id, uint64_t lowest_time,
     
     // Make sure we have enough bundles to consider
     while (m_bundles.size() <= lowest_time) {
-        m_bundles.push_back({nullptr, nullptr, nullptr, nullptr, nullptr});
+        m_bundles.push_back({-1, -1, -1, -1, -1});
     }
     
     // Try each bundle starting from the lowest possible time
@@ -150,35 +227,35 @@ bool LoopCompiler::insert_ASAP(uint64_t instr_id, uint64_t lowest_time,
             instr.op == Opcode::movr || instr.op == Opcode::movp || 
             instr.op == Opcode::nop) {
             // ALU operations - check ALU0 then ALU1
-            if (m_bundles[i_bundle][0] == nullptr) {
+            if (m_bundles[i_bundle][0] == -1) {
                 // ALU0 is available
-                m_bundles[i_bundle][0] = &instr;
+                m_bundles[i_bundle][0] = instr_id;
                 time_table[instr_id] = i_bundle;
                 return true;
-            } else if (m_bundles[i_bundle][1] == nullptr) {
+            } else if (m_bundles[i_bundle][1] == -1) {
                 // ALU1 is available
-                m_bundles[i_bundle][1] = &instr;
+                m_bundles[i_bundle][1] = instr_id;
                 time_table[instr_id] = i_bundle;
                 return true;
             }
         } else if (instr.op == Opcode::mulu) {
             // Multiplication operation - check MUL unit
-            if (m_bundles[i_bundle][2] == nullptr) {
-                m_bundles[i_bundle][2] = &instr;
+            if (m_bundles[i_bundle][2] == -1) {
+                m_bundles[i_bundle][2] = instr_id;
                 time_table[instr_id] = i_bundle;
                 return true;
             }
         } else if (instr.op == Opcode::ld || instr.op == Opcode::st) {
             // Memory operations - check MEM unit
-            if (m_bundles[i_bundle][3] == nullptr) {
-                m_bundles[i_bundle][3] = &instr;
+            if (m_bundles[i_bundle][3] == -1) {
+                m_bundles[i_bundle][3] = instr_id;
                 time_table[instr_id] = i_bundle;
                 return true;
             }
         } else if (instr.op == Opcode::loop || instr.op == Opcode::loop_pip) {
             // Branch operations - check BRANCH unit
-            if (m_bundles[i_bundle][4] == nullptr) {
-                m_bundles[i_bundle][4] = &instr;
+            if (m_bundles[i_bundle][4] == -1) {
+                m_bundles[i_bundle][4] = instr_id;
                 time_table[instr_id] = i_bundle;
                 return true;
             }
@@ -198,20 +275,20 @@ void LoopCompiler::append(uint64_t instr_id, uint64_t lowest_time,
     const auto& instr = m_program[instr_id];
     
     uint64_t bundle_idx = m_bundles.size();
-    m_bundles.emplace_back(Bundle{nullptr,nullptr,nullptr,nullptr,nullptr});
+    m_bundles.emplace_back(Bundle{-1, -1, -1, -1, -1});
     
     // Determine which functional unit to use based on instruction type
     if (instr.op == Opcode::add || instr.op == Opcode::addi || 
         instr.op == Opcode::sub || instr.op == Opcode::movi || 
         instr.op == Opcode::movr || instr.op == Opcode::movp || 
         instr.op == Opcode::nop) {
-        m_bundles[bundle_idx][0] = &instr;  // ALU0
+        m_bundles[bundle_idx][0] = instr_id;  // ALU0
     } else if (instr.op == Opcode::mulu) {
-        m_bundles[bundle_idx][2] = &instr;  // MUL
+        m_bundles[bundle_idx][2] = instr_id;  // MUL
     } else if (instr.op == Opcode::ld || instr.op == Opcode::st) {
-        m_bundles[bundle_idx][3] = &instr;  // MEM
+        m_bundles[bundle_idx][3] = instr_id;  // MEM
     } else if (instr.op == Opcode::loop || instr.op == Opcode::loop_pip) {
-        m_bundles[bundle_idx][4] = &instr;  // BRANCH
+        m_bundles[bundle_idx][4] = instr_id;  // BRANCH
     }
     
     // Update time table with the bundle assignment
@@ -376,4 +453,122 @@ std::vector<uint64_t> LoopCompiler::schedule_bb2(std::vector<uint64_t>& time_tab
     }
     
     return time_table;
+}
+
+/**
+ * Perform register allocation (allocb algorithm)
+ * Implements the register allocation described in section 3.3.1
+ * Returns both destination and operand mappings in a single call
+ */
+std::pair<std::vector<uint32_t>, std::vector<std::pair<uint32_t, uint32_t>>> 
+LoopCompiler::allocate_registers(const std::vector<Dependency>& dependencies, 
+                                const std::vector<uint64_t>& time_table) const {
+    size_t N = m_program.size();
+    std::vector<uint32_t> new_dest(N, 0);
+    std::vector<std::pair<uint32_t, uint32_t>> new_use(N, {UINT32_MAX, UINT32_MAX});
+    uint32_t next_reg = 1;  // Start from register x1
+    
+    // Phase 1: Assign fresh destination registers in BUNDLE order (execution order)
+    for (const auto& bundle : m_bundles) {
+        for (int fu = 0; fu < 5; ++fu) {
+            int32_t id = bundle[fu];
+            if (id < 0) continue;  // Skip empty slots
+            
+            const auto& instr = m_program[id];
+            // Skip instructions that don't produce values
+            if (instr.op != Opcode::st && 
+                instr.op != Opcode::loop && 
+                instr.op != Opcode::loop_pip && 
+                instr.op != Opcode::nop &&
+                instr.op != Opcode::movp) {
+                
+                // Don't allocate new registers for LC or EC
+                if (instr.dest == lc_id || instr.dest == ec_id) {
+                    // Special registers keep their special IDs
+                    new_dest[id] = instr.dest;
+                } else {
+                    // Normal registers get fresh allocations
+                    new_dest[id] = next_reg++;
+                }
+            }
+        }
+    }
+    
+    // Phase 2: Link operands to producers using dependencies
+    for (size_t i = 0; i < N; ++i) {
+        const auto& deps = dependencies[i].local;
+        const auto& instr = m_program[i];
+        
+        // Process each dependency for this instruction
+        size_t dep_idx = 0;
+        for (auto dep_id : deps) {
+            uint32_t r = new_dest[dep_id];
+            
+            // Link different operands based on instruction type
+            switch (instr.op) {
+                case Opcode::add:
+                case Opcode::sub:
+                case Opcode::mulu:
+                    // First dependency goes to op_a, second to op_b
+                    if (dep_idx == 0) {
+                        new_use[i].first = r;
+                    } else if (dep_idx == 1) {
+                        new_use[i].second = r;
+                    }
+                    break;
+                    
+                case Opcode::addi:
+                case Opcode::ld:
+                case Opcode::movr:
+                    // These instructions only have one operand (op_a)
+                    new_use[i].first = r;
+                    break;
+                    
+                case Opcode::st:
+                    // Store has two dependencies: data and address
+                    if (dep_idx == 0) {
+                        // First dependency is the data value (dest)
+                        new_dest[i] = r;  // Store the value to store in dest 
+                    } else if (dep_idx == 1) {
+                        // Second dependency is the address base (op_a)
+                        new_use[i].first = r;   // Store address base in op_a
+                    }
+                    break;
+                    
+                default:
+                    break;
+            }
+            dep_idx++;
+        }
+    }
+    
+    // Phase 4: Fix undefined register reads
+    // Process in BUNDLE order to match Python reference implementation
+    for (const auto& bundle : m_bundles) {
+        for (int fu = 0; fu < 5; ++fu) {
+            int32_t id = bundle[fu];
+            if (id < 0) continue;  // Skip empty slots
+            
+            const auto& instr = m_program[id];
+            auto [op_a, op_b] = new_use[id];
+            
+            // Check if op_a is used by this instruction and is undefined (UINT32_MAX)
+            if ((instr.op == Opcode::add || instr.op == Opcode::sub || 
+                 instr.op == Opcode::mulu || instr.op == Opcode::addi || 
+                 instr.op == Opcode::ld || instr.op == Opcode::st) && 
+                op_a == UINT32_MAX) {
+                op_a = next_reg++;
+            }
+            
+            // Check if op_b is used by this instruction and is undefined (UINT32_MAX)
+            if ((instr.op == Opcode::add || instr.op == Opcode::sub || 
+                 instr.op == Opcode::mulu) && op_b == UINT32_MAX) {
+                op_b = next_reg++;
+            }
+            
+            new_use[id] = {op_a, op_b};
+        }
+    }
+    
+    return {new_dest, new_use};
 }

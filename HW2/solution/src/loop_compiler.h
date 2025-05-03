@@ -15,9 +15,10 @@ public:
 private:
     /** 
      * Bundle representation: [ALU0, ALU1, MUL, MEM, BRANCH]
+     * Stores instruction indices: -1 for empty, 0..N-1 for instruction index
      * Matches the structure used in the VLIWProgram output
      */
-    using Bundle = std::array<const Instruction*, 5>;
+    using Bundle = std::array<int32_t, 5>;
     
     /** 
      * Collection of bundles that form the schedule
@@ -78,6 +79,24 @@ private:
      */
     void append(uint64_t instr_id, uint64_t lowest_time,
                std::vector<uint64_t>& time_table) const;
+               
+    /**
+     * Perform register allocation (allocb algorithm)
+     * Implements the three-phase register allocation described in section 3.3.1
+     * 1. Allocate unique registers to each instruction producing a value
+     * 2. Link operands to the newly allocated registers
+     * 3. Fix interloop dependencies with mov instructions
+     * 4. Assign fresh registers to any undefined operands
+     * 
+     * @param dependencies Dependencies between instructions
+     * @param time_table Mapping of instruction IDs to bundle IDs
+     * @return std::pair containing: 
+     *         1. Vector of newly allocated destination registers for each instruction
+     *         2. Vector of pairs for operand registers (op_a, op_b) for each instruction
+     */
+    std::pair<std::vector<uint32_t>, std::vector<std::pair<uint32_t, uint32_t>>> 
+    allocate_registers(const std::vector<Dependency>& dependencies, 
+                      const std::vector<uint64_t>& time_table) const;
 };
 
 
