@@ -7,6 +7,7 @@ std::vector<Instruction> Parser::parse_program(
     const std::vector<std::string>& program
 ) {
     std::vector<Instruction> instructions;
+    uint64_t cur_id {0};
     for (const auto& line : program) {
         Instruction instr;
 
@@ -121,6 +122,7 @@ std::vector<Instruction> Parser::parse_program(
             break;
         }
 
+        instr.id = cur_id++;
         instructions.push_back(instr);
     }
     return instructions;

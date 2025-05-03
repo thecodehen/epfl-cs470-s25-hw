@@ -62,6 +62,8 @@ public:
     uint32_t op_b;
     // imm also stores loopStart, true=1/false=0
     int64_t imm;
+    uint64_t id;
+    bool has_been_renamed {};
     std::string to_string() const {
         std::string s;
         switch (op) {

@@ -62,7 +62,7 @@ int main(int argc, char *argv[]) {
     Program v = parser.parse_program(data.value());
     for (auto it = v.begin(); it != v.end(); ++it) {
         std::cout << std::setfill('0') << std::setw(5)
-            << std::distance(v.begin(), it) << ": " << it->to_string() << '\n';
+            << it->id << ": " << it->to_string() << '\n';
     }
     LoopCompiler loop_compiler{v};
     VLIWProgram loop_program = loop_compiler.compile();
