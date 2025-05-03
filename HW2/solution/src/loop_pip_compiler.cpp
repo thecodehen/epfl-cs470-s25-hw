@@ -8,7 +8,7 @@
  * Orchestrates the entire pipeline scheduling process
  */
 VLIWProgram LoopPipCompiler::compile() {
-    auto basic_blocks = find_basic_blocks();
+    const auto basic_blocks = find_basic_blocks();
     
     // Compute the minimum initiation interval (II)
     m_initiation_interval = compute_min_initiation_interval();
@@ -16,10 +16,10 @@ VLIWProgram LoopPipCompiler::compile() {
 
     
     // Find dependencies between instructions
-    auto dependencies = find_dependencies(basic_blocks);
+    const auto dependencies = find_dependencies(basic_blocks);
 
     // Schedule instructions with pipeline support
-    auto time_table = schedule_with_pipelining(dependencies);
+    const auto time_table = schedule(basic_blocks, dependencies);
     
     // Organize the pipeline stages
     organize_pipeline_stages();
@@ -60,20 +60,20 @@ VLIWProgram LoopPipCompiler::compile() {
  * Main scheduling function for pipelined execution
  * Implements modulo scheduling with resource reservation
  */
-std::vector<uint64_t> LoopPipCompiler::schedule_with_pipelining(std::vector<Dependency>& dependencies) const {
+std::vector<uint64_t> LoopPipCompiler::schedule(
+    const std::vector<Block>& basic_blocks,
+    const std::vector<Dependency>& dependencies
+    ) {
     // Initialize time table to map instructions to bundles
-    std::vector<uint64_t> time_table(m_program.size(), UINT64_MAX);
+    std::vector time_table(m_program.size(), UINT64_MAX);
     
     // Clear any previous scheduling data
     m_bundles.clear();
     m_slot_status.clear();
     
-    // Get basic blocks
-    auto basic_blocks = find_basic_blocks();
-    
     // Schedule each basic block in order
     // First the pre-loop code (BB0) - identical to non-pipelined version
-    schedule_preloop_block(time_table);
+    schedule_preloop_block(time_table, basic_blocks, dependencies);
     
     // Then schedule the loop body (BB1) with pipelining
     if (basic_blocks.size() > 1) {
@@ -94,27 +94,26 @@ std::vector<uint64_t> LoopPipCompiler::schedule_with_pipelining(std::vector<Depe
  * Schedules the first basic block (pre-loop code)
  * Identical to the non-pipelined version
  */
-void LoopPipCompiler::schedule_preloop_block(std::vector<uint64_t>& time_table) const {
-    auto basic_blocks = find_basic_blocks();
-    auto dependencies = find_dependencies(basic_blocks);
-    
+void LoopPipCompiler::schedule_preloop_block(
+    std::vector<uint64_t>& time_table,
+    const std::vector<Block>& basic_blocks,
+    const std::vector<Dependency>& dependencies
+    ) {
     // Process each instruction in BB0
-    for (uint64_t i = basic_blocks[0].first; i < basic_blocks[0].second; ++i) {
+    assert(basic_blocks.size() > 0);
+    const Block bb0 = basic_blocks.at(0);
+    for (auto i {bb0.first}; i < bb0.second; ++i) {
         uint64_t lowest_time = 0;
         
         // Calculate the earliest possible time based on dependencies
-        for (uint64_t dep_id : dependencies[i].local) {
+        for (const uint64_t dep_id : dependencies.at(i).local) {
             // Each dependent instruction has a latency
             // MUL operations have 3 cycle latency, others have 1
-            uint64_t latency = (m_program[dep_id].op == Opcode::mulu) ? 3 : 1;
-            lowest_time = std::max(lowest_time, time_table[dep_id] + latency);
+            const auto latency = (m_program[dep_id].op == Opcode::mulu) ? 3 : 1;
+            lowest_time = std::max(lowest_time, time_table.at(dep_id) + latency);
         }
-        
-        // Try to insert ASAP, if not possible, append a new bundle
-        // Since we're not in the loop body yet, we use regular insertion without modulo constraints
-        if (!try_regular_insert(i, lowest_time, time_table)) {
-            append_regular_bundle(i, lowest_time, time_table);
-        }
+
+        schedule_asap(time_table, i, lowest_time);
     }
 }
 
@@ -122,9 +121,12 @@ void LoopPipCompiler::schedule_preloop_block(std::vector<uint64_t>& time_table) 
  * Helper function for pre-loop code (identical to LoopCompiler::insert_ASAP)
  * This is used for BB0 where we don't need modulo scheduling yet
  */
-bool LoopPipCompiler::try_regular_insert(uint64_t instr_id, uint64_t lowest_time, 
-                                      std::vector<uint64_t>& time_table) const {
-    const auto& instr = m_program[instr_id];
+void LoopPipCompiler::schedule_asap(
+    std::vector<uint64_t>& time_table,
+    const uint64_t instr_id,
+    const uint64_t lowest_time
+    ) {
+    const auto& instr = m_program.at(instr_id);
     
     // Make sure we have enough bundles to consider
     while (m_bundles.size() <= lowest_time) {
@@ -133,90 +135,77 @@ bool LoopPipCompiler::try_regular_insert(uint64_t instr_id, uint64_t lowest_time
     }
     
     // Try each bundle starting from the lowest possible time
-    for (uint64_t i_bundle = lowest_time; i_bundle < m_bundles.size(); ++i_bundle) {
-        // Determine instruction type and check appropriate functional unit
-        if (instr.op == Opcode::add || instr.op == Opcode::addi || 
-            instr.op == Opcode::sub || instr.op == Opcode::movi || 
-            instr.op == Opcode::movr || instr.op == Opcode::movp || 
-            instr.op == Opcode::nop) {
-            // ALU operations - check ALU0 then ALU1
-            if (m_bundles[i_bundle][0] == nullptr) {
-                // ALU0 is available
-                m_bundles[i_bundle][0] = &instr;
-                time_table[instr_id] = i_bundle;
-                return true;
-            } else if (m_bundles[i_bundle][1] == nullptr) {
-                // ALU1 is available
-                m_bundles[i_bundle][1] = &instr;
-                time_table[instr_id] = i_bundle;
-                return true;
-            }
-        } else if (instr.op == Opcode::mulu) {
-            // Multiplication operation - check MUL unit
-            if (m_bundles[i_bundle][2] == nullptr) {
-                m_bundles[i_bundle][2] = &instr;
-                time_table[instr_id] = i_bundle;
-                return true;
-            }
-        } else if (instr.op == Opcode::ld || instr.op == Opcode::st) {
-            // Memory operations - check MEM unit
-            if (m_bundles[i_bundle][3] == nullptr) {
-                m_bundles[i_bundle][3] = &instr;
-                time_table[instr_id] = i_bundle;
-                return true;
-            }
-        } else if (instr.op == Opcode::loop || instr.op == Opcode::loop_pip) {
-            // Branch operations - check BRANCH unit
-            if (m_bundles[i_bundle][4] == nullptr) {
-                m_bundles[i_bundle][4] = &instr;
-                time_table[instr_id] = i_bundle;
-                return true;
-            }
+    for (auto i_bundle {lowest_time}; i_bundle < m_bundles.size(); ++i_bundle) {
+        if (try_schedule(time_table, instr_id, i_bundle)) {
+            return;
         }
     }
-    
-    // Could not find a suitable slot in existing bundles
-    return false;
+
+    // no suitable slot found in existing bundle, need to create a new bundle
+    m_bundles.push_back({nullptr, nullptr, nullptr, nullptr, nullptr});
+    m_slot_status.push_back({OPEN, OPEN, OPEN, OPEN, OPEN});
+    try_schedule(time_table, instr_id, m_bundles.size() - 1);
 }
 
-/**
- * Helper function for pre-loop code (identical to LoopCompiler::append)
- */
-void LoopPipCompiler::append_regular_bundle(uint64_t instr_id, uint64_t lowest_time,
-                                         std::vector<uint64_t>& time_table) const {
-    const auto& instr = m_program[instr_id];
-    
-    // Make sure we have enough bundles up to lowest_time
-    while (m_bundles.size() <= lowest_time) {
-        m_bundles.push_back({nullptr, nullptr, nullptr, nullptr, nullptr});
-        m_slot_status.push_back({OPEN, OPEN, OPEN, OPEN, OPEN});
+bool LoopPipCompiler::try_schedule(
+    std::vector<uint64_t>& time_table,
+    const uint64_t instr_id,
+    const uint64_t time
+    ) {
+    // Determine instruction type and check appropriate functional unit
+    const auto& instr = m_program.at(instr_id);
+
+    switch (instr.op) {
+    case Opcode::add:
+    case Opcode::addi:
+    case Opcode::sub:
+    case Opcode::movi:
+    case Opcode::movr:
+    case Opcode::movp:
+    case Opcode::nop:
+        // ALU operations - check ALU0 then ALU1
+        if (m_bundles.at(time)[0] == nullptr) {
+            // ALU0 is available
+            m_bundles.at(time)[0] = &instr;
+            time_table[instr_id] = time;
+            return true;
+        }
+        if (m_bundles.at(time)[1] == nullptr) {
+            // ALU1 is available
+            m_bundles.at(time)[1] = &instr;
+            time_table[instr_id] = time;
+            return true;
+        }
+        break;
+    case Opcode::mulu:
+        // Multiplication operation - check MUL unit
+        if (m_bundles.at(time)[2] == nullptr) {
+            m_bundles.at(time)[2] = &instr;
+            time_table[instr_id] = time;
+            return true;
+        }
+        break;
+    case Opcode::ld:
+    case Opcode::st:
+        // Memory operations - check MEM unit
+        if (m_bundles.at(time)[3] == nullptr) {
+            m_bundles.at(time)[3] = &instr;
+            time_table[instr_id] = time;
+            return true;
+        }
+        break;
+    case Opcode::loop:
+    case Opcode::loop_pip:
+        // Branch operations - check BRANCH unit
+        if (m_bundles.at(time)[4] == nullptr) {
+            m_bundles.at(time)[4] = &instr;
+            time_table[instr_id] = time;
+            return true;
+        }
+        break;
     }
-    
-    // Place instruction in the appropriate slot based on its type
-    uint64_t bundle_idx = std::max(static_cast<uint64_t>(m_bundles.size() - 1), lowest_time);
-    
-    // If we need to create a new bundle at a specific position
-    while (m_bundles.size() <= bundle_idx) {
-        m_bundles.push_back({nullptr, nullptr, nullptr, nullptr, nullptr});
-        m_slot_status.push_back({OPEN, OPEN, OPEN, OPEN, OPEN});
-    }
-    
-    // Determine which functional unit to use based on instruction type
-    if (instr.op == Opcode::add || instr.op == Opcode::addi || 
-        instr.op == Opcode::sub || instr.op == Opcode::movi || 
-        instr.op == Opcode::movr || instr.op == Opcode::movp || 
-        instr.op == Opcode::nop) {
-        m_bundles[bundle_idx][0] = &instr;  // ALU0
-    } else if (instr.op == Opcode::mulu) {
-        m_bundles[bundle_idx][2] = &instr;  // MUL
-    } else if (instr.op == Opcode::ld || instr.op == Opcode::st) {
-        m_bundles[bundle_idx][3] = &instr;  // MEM
-    } else if (instr.op == Opcode::loop || instr.op == Opcode::loop_pip) {
-        m_bundles[bundle_idx][4] = &instr;  // BRANCH
-    }
-    
-    // Update time table with the bundle assignment
-    time_table[instr_id] = bundle_idx;
+
+    return false;
 }
 
 /**
@@ -224,7 +213,7 @@ void LoopPipCompiler::append_regular_bundle(uint64_t instr_id, uint64_t lowest_t
  * Implements modulo scheduling with resource reservation
  * Will retry with increased II if scheduling fails
  */
-void LoopPipCompiler::schedule_loop_body_pipelined(std::vector<uint64_t>& time_table) const {
+void LoopPipCompiler::schedule_loop_body_pipelined(std::vector<uint64_t>& time_table) {
     auto basic_blocks = find_basic_blocks();
     auto dependencies = find_dependencies(basic_blocks);
     
@@ -308,7 +297,7 @@ void LoopPipCompiler::schedule_loop_body_pipelined(std::vector<uint64_t>& time_t
  */
 uint64_t LoopPipCompiler::calculate_loop_start_time(const std::vector<Dependency>& dependencies, 
                                                  const Block& loop_block,
-                                                 const std::vector<uint64_t>& time_table) const {
+                                                 const std::vector<uint64_t>& time_table) {
     uint64_t lowest_time = m_bundles.size();
     
     // Process loop instructions except the last one (loop instruction)
@@ -337,7 +326,7 @@ uint64_t LoopPipCompiler::calculate_loop_start_time(const std::vector<Dependency
 uint64_t LoopPipCompiler::calculate_instruction_earliest_time(uint64_t instr_id, 
                                                           const std::vector<Dependency>& dependencies,
                                                           const std::vector<uint64_t>& time_table,
-                                                          uint64_t loop_start_time) const {
+                                                          uint64_t loop_start_time) {
     uint64_t lowest_time = loop_start_time;
     
     // Check local dependencies
@@ -359,7 +348,7 @@ uint64_t LoopPipCompiler::calculate_instruction_earliest_time(uint64_t instr_id,
 uint64_t LoopPipCompiler::calculate_time_after_loop(const std::vector<Dependency>& dependencies,
                                                  const std::vector<uint64_t>& loop_instructions,
                                                  const std::vector<uint64_t>& time_table,
-                                                 uint64_t loop_start_time) const {
+                                                 uint64_t loop_start_time) {
     uint64_t time_needed = 0;
     
     // Check all interloop dependencies within the loop body
@@ -391,7 +380,7 @@ uint64_t LoopPipCompiler::calculate_time_after_loop(const std::vector<Dependency
  * Schedules the post-loop code
  * Similar to non-pipelined version but respects pipeline dependencies
  */
-void LoopPipCompiler::schedule_postloop_block(std::vector<uint64_t>& time_table) const {
+void LoopPipCompiler::schedule_postloop_block(std::vector<uint64_t>& time_table) {
     auto basic_blocks = find_basic_blocks();
     auto dependencies = find_dependencies(basic_blocks);
     
@@ -427,9 +416,7 @@ void LoopPipCompiler::schedule_postloop_block(std::vector<uint64_t>& time_table)
         
         // Try to insert ASAP, if not possible, append a new bundle
         // We don't need modulo scheduling after the loop
-        if (!try_regular_insert(i, lowest_time, time_table)) {
-            append_regular_bundle(i, lowest_time, time_table);
-        }
+        schedule_asap(time_table, i, lowest_time);
     }
 }
 
@@ -438,7 +425,7 @@ void LoopPipCompiler::schedule_postloop_block(std::vector<uint64_t>& time_table)
  * Reserves slots in other iterations according to the II
  */
 bool LoopPipCompiler::try_modulo_insert(uint64_t instr_id, uint64_t earliest_time,
-                                     std::vector<uint64_t>& time_table) const {
+                                     std::vector<uint64_t>& time_table) {
     const auto& instr = m_program[instr_id];
     
     // Make sure we have enough bundles to consider
@@ -505,7 +492,7 @@ bool LoopPipCompiler::try_modulo_insert(uint64_t instr_id, uint64_t earliest_tim
  * Also handles resource reservation
  */
 void LoopPipCompiler::create_new_bundle_with_reservations(uint64_t instr_id, uint64_t earliest_time,
-                                                       std::vector<uint64_t>& time_table) const {
+                                                       std::vector<uint64_t>& time_table) {
     const auto& instr = m_program[instr_id];
     
     // Make sure we have enough bundles up to earliest_time
@@ -561,7 +548,7 @@ void LoopPipCompiler::create_new_bundle_with_reservations(uint64_t instr_id, uin
  * Propagates resource reservations when adding new bundles
  * Ensures that reserved slots maintain consistency across the schedule
  */
-void LoopPipCompiler::update_resource_reservations() const {
+void LoopPipCompiler::update_resource_reservations() {
     // Get the index of the newly added bundle
     uint64_t new_bundle_idx = m_bundles.size() - 1;
     
@@ -590,7 +577,7 @@ void LoopPipCompiler::update_resource_reservations() const {
  * Verifies the equation: S(P) + λ(P) ≤ S(C) + II
  */
 bool LoopPipCompiler::verify_pipeline_dependencies(const std::vector<uint64_t>& time_table,
-                                               const std::vector<uint64_t>& loop_instructions) const {
+                                               const std::vector<uint64_t>& loop_instructions) {
     auto basic_blocks = find_basic_blocks();
     auto dependencies = find_dependencies(basic_blocks);
     
@@ -623,7 +610,7 @@ bool LoopPipCompiler::verify_pipeline_dependencies(const std::vector<uint64_t>& 
  * Each stage has II bundles
  * Used for final code generation and predication
  */
-void LoopPipCompiler::organize_pipeline_stages() const {
+void LoopPipCompiler::organize_pipeline_stages() {
     // TODO: Implement this function to:
     // 1. Clear existing pipeline stages
     // 2. Calculate how many stages there are (loop length / II)
@@ -661,7 +648,7 @@ void LoopPipCompiler::organize_pipeline_stages() const {
  * Assigns predicate registers to instructions based on pipeline stage
  * First stage gets p32, second p33, etc.
  */
-void LoopPipCompiler::assign_predicate_registers() const {
+void LoopPipCompiler::assign_predicate_registers() {
     // TODO: Implement this function to:
     // 1. Initialize predicate map to hold one predicate ID per instruction
     // 2. For each stage, assign a predicate register to all instructions
@@ -697,7 +684,7 @@ void LoopPipCompiler::assign_predicate_registers() const {
  * Creates initialization code for predicates and EC register
  * Adds mov instructions before the loop.pip instruction
  */
-void LoopPipCompiler::setup_pipeline_initialization() const {
+void LoopPipCompiler::setup_pipeline_initialization() {
     // TODO: Implement this function to:
     // 1. Find the bundle just before the loop.pip instruction
     // 2. Add a mov instruction to initialize p32 to true

@@ -34,57 +34,66 @@ private:
      * Collection of bundles that form the schedule
      * Each bundle represents one cycle of execution
      */
-    mutable std::vector<Bundle> m_bundles;
+    std::vector<Bundle> m_bundles;
     
     /**
      * Stores which slots are reserved in each bundle due to modulo scheduling
      * Parallel array to m_bundles where RESERVED means the slot is reserved
      */
-    mutable std::vector<std::array<SlotStatus, 5>> m_slot_status;
+    std::vector<std::array<SlotStatus, 5>> m_slot_status;
     
     /**
      * Maps each bundle to its pipeline stage
      * Used to track which bundles belong to which stages
      */
-    mutable std::vector<std::vector<uint64_t>> m_pipeline_stages;
+    std::vector<std::vector<uint64_t>> m_pipeline_stages;
     
     /**
      * Tracks which instructions need predication and with which predicate register
      * Maps instruction IDs to predicate register IDs
      */
-    mutable std::vector<uint32_t> m_predicate_map;
+    std::vector<uint32_t> m_predicate_map;
     
     /**
      * Time markers for loop execution
      * m_loop_start_time: First bundle of the loop body
      * m_loop_end_time: Last bundle of the loop body
      */
-    mutable uint64_t m_loop_start_time = 0;
-    mutable uint64_t m_loop_end_time = 0;
+    uint64_t m_loop_start_time = 0;
+    uint64_t m_loop_end_time = 0;
     
     /**
      * Current Initiation Interval
      * Will be adjusted if scheduling fails with current II
      */
-    mutable uint32_t m_initiation_interval = 0;
+    uint64_t m_initiation_interval {};
 
     /**
      * Main scheduling function for pipelined execution
      * Implements modulo scheduling with resource reservation
-     * 
+     *
+     * @param basic_blocks Basic blocks of the program
      * @param dependencies Dependency information for all instructions
      * @return Vector mapping instruction IDs to their bundle IDs
      */
-    std::vector<uint64_t> schedule_with_pipelining(std::vector<Dependency>& dependencies) const;
+    std::vector<uint64_t> schedule(
+        const std::vector<Block>& basic_blocks,
+        const std::vector<Dependency>& dependencies
+        );
     
     /**
      * Schedules the first basic block (pre-loop code)
      * Identical to the non-pipelined version
      * 
      * @param time_table Mapping of instruction IDs to bundle IDs
+     * @param dependencies Dependency information for all instructions
      * @return
      */
-    void schedule_preloop_block(std::vector<uint64_t>& time_table) const;
+    void schedule_preloop_block(
+        std::vector<uint64_t>& time_table,
+        const std::vector<Block>& basic_blocks,
+        const std::vector<Dependency>& dependencies
+        );
     
     /**
      * Schedules the loop body with pipeline support
@@ -94,7 +103,7 @@ private:
      * @param time_table Mapping of instruction IDs to bundle IDs
      * @return
      */
-    void schedule_loop_body_pipelined(std::vector<uint64_t>& time_table) const;
+    void schedule_loop_body_pipelined(std::vector<uint64_t>& time_table);
     
     /**
      * Schedules the post-loop code
@@ -103,27 +112,34 @@ private:
      * @param time_table Mapping of instruction IDs to bundle IDs
      * @return
      */
-    void schedule_postloop_block(std::vector<uint64_t>& time_table) const;
+    void schedule_postloop_block(std::vector<uint64_t>& time_table);
     
     /**
      * Helper function for pre-loop code (identical to LoopCompiler::insert_ASAP)
      * This is used for BB0 where we don't need modulo scheduling yet
      */
-    bool try_regular_insert(uint64_t instr_id, uint64_t lowest_time, 
-                          std::vector<uint64_t>& time_table) const;
-    
+    void schedule_asap(
+        std::vector<uint64_t>& time_table,
+        uint64_t instr_id,
+        uint64_t lowest_time
+        );
+
     /**
-     * Helper function for pre-loop code (identical to LoopCompiler::append)
+     * try_schedule attempts to schedule the instruction at the specified time.
+     * If unsuccessful, return false.
      */
-    void append_regular_bundle(uint64_t instr_id, uint64_t lowest_time,
-                             std::vector<uint64_t>& time_table) const;
-    
+    bool try_schedule(
+        std::vector<uint64_t>& time_table,
+        uint64_t instr_id,
+        uint64_t time
+        );
+
     /**
      * Calculate the earliest possible start time for the loop based on dependencies
      */
     uint64_t calculate_loop_start_time(const std::vector<Dependency>& dependencies, 
                                      const Block& loop_block,
-                                     const std::vector<uint64_t>& time_table) const;
+                                     const std::vector<uint64_t>& time_table);
     
     /**
      * Calculate the earliest possible time for an instruction based on all its dependencies
@@ -131,7 +147,7 @@ private:
     uint64_t calculate_instruction_earliest_time(uint64_t instr_id, 
                                               const std::vector<Dependency>& dependencies,
                                               const std::vector<uint64_t>& time_table,
-                                              uint64_t loop_start_time) const;
+                                              uint64_t loop_start_time);
     
     /**
      * Calculate additional time needed after the loop to handle interloop dependencies
@@ -139,7 +155,7 @@ private:
     uint64_t calculate_time_after_loop(const std::vector<Dependency>& dependencies,
                                      const std::vector<uint64_t>& loop_instructions,
                                      const std::vector<uint64_t>& time_table,
-                                     uint64_t loop_start_time) const;
+                                     uint64_t loop_start_time);
     
     /**
      * Attempts to insert an instruction with modulo scheduling
@@ -151,7 +167,7 @@ private:
      * @return true if inserted successfully, false otherwise
      */
     bool try_modulo_insert(uint64_t instr_id, uint64_t earliest_time, 
-                          std::vector<uint64_t>& time_table) const;
+                          std::vector<uint64_t>& time_table);
     
     /**
      * Appends a new bundle with modulo scheduling support
@@ -163,13 +179,13 @@ private:
      * @param time_table Mapping of instruction IDs to bundle IDs
      */
     void create_new_bundle_with_reservations(uint64_t instr_id, uint64_t earliest_time,
-                                            std::vector<uint64_t>& time_table) const;
+                                            std::vector<uint64_t>& time_table);
     
     /**
      * Propagates resource reservations when adding new bundles
      * Ensures that reserved slots maintain consistency across the schedule
      */
-    void update_resource_reservations() const;
+    void update_resource_reservations();
     
     /**
      * Checks if all interloop dependencies are satisfied with current II
@@ -180,26 +196,26 @@ private:
      * @return true if all dependencies are satisfied, false otherwise
      */
     bool verify_pipeline_dependencies(const std::vector<uint64_t>& time_table, 
-                                    const std::vector<uint64_t>& loop_instructions) const;
+                                    const std::vector<uint64_t>& loop_instructions);
     
     /**
      * Organizes loop bundles into pipeline stages
      * Each stage has II bundles
      * Used for final code generation and predication
      */
-    void organize_pipeline_stages() const;
+    void organize_pipeline_stages();
     
     /**
      * Assigns predicate registers to instructions based on pipeline stage
      * First stage gets p32, second p33, etc.
      */
-    void assign_predicate_registers() const;
+    void assign_predicate_registers();
     
     /**
      * Creates initialization code for predicates and EC register
      * Adds mov instructions before the loop.pip instruction
      */
-    void setup_pipeline_initialization() const;
+    void setup_pipeline_initialization();
 
     void rename(
         const std::vector<uint64_t> time_table,
