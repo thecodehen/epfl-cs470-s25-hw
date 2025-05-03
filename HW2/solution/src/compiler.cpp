@@ -153,7 +153,7 @@ std::vector<Dependency> Compiler::find_dependencies(std::vector<Block> blocks) c
 
         // in this for loop, while we update the producers map, we check if the
         // current instruction is a consumer of any producers
-        for (auto i {block.first + 1}; i != block.second; ++i) {
+        for (auto i {block.first + 1}; i < block.second; ++i) {
             // update producer
             update_producers(producers, i - 1);
 
