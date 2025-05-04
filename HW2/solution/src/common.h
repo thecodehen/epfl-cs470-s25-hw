@@ -200,9 +200,8 @@ public:
     void print() const
     {
         const std::size_t size {alu0_instructions.size()};
-        std::cout << "VLIW Program:\n";
         for (std::size_t i {0}; i < size; ++i) {
-            constexpr auto instr_width{20};
+            constexpr auto instr_width{25};
             constexpr auto index_width{15};
             std::cout << std::string(index_width - 6, ' ');
             std::cout << std::setfill('0') << std::setw(5) << i << '|' << std::setfill(' ');

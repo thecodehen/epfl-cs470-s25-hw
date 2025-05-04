@@ -215,7 +215,9 @@ private:
      * Assigns predicate registers to instructions based on pipeline stage
      * First stage gets p32, second p33, etc.
      */
-    void assign_predicate_registers();
+    void assign_predicate_registers(
+        std::vector<Bundle>& bundles
+    );
     
     /**
      * Creates initialization code for predicates and EC register

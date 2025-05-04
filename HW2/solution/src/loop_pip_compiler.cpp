@@ -21,18 +21,18 @@ VLIWProgram LoopPipCompiler::compile() {
     // Schedule instructions with pipeline support
     const auto time_table = schedule(basic_blocks, dependencies);
 
-    // Organize the pipeline stages
-    organize_pipeline_stages();
-
-    // Assign predicate registers to instructions based on stage
-    assign_predicate_registers();
-
-    // Add initialization instructions for predicates and EC
-    setup_pipeline_initialization();
-
     // rename registers
     auto bundles = rename(time_table, basic_blocks, dependencies);
-    compress_pipeline(bundles);
+
+    if (basic_blocks.size() > 1) {
+        // Assign predicate registers to instructions based on stage
+        assign_predicate_registers(bundles);
+
+        // Add initialization instructions for predicates and EC
+        setup_pipeline_initialization();
+
+        compress_pipeline(bundles);
+    }
 
     // Create the final VLIW program
     VLIWProgram program;
@@ -95,6 +95,9 @@ std::vector<uint64_t> LoopPipCompiler::schedule(
         if (basic_blocks.size() > 2) {
             schedule_postloop_block(time_table);
         }
+
+        // Organize the pipeline stages
+        organize_pipeline_stages();
     }
 
     return time_table;
@@ -665,7 +668,9 @@ void LoopPipCompiler::organize_pipeline_stages() {
  * Assigns predicate registers to instructions based on pipeline stage
  * First stage gets p32, second p33, etc.
  */
-void LoopPipCompiler::assign_predicate_registers() {
+void LoopPipCompiler::assign_predicate_registers(
+    std::vector<Bundle>& bundles
+) {
     // TODO: Implement this function to:
     // 1. Initialize predicate map to hold one predicate ID per instruction
     // 2. For each stage, assign a predicate register to all instructions
@@ -676,21 +681,16 @@ void LoopPipCompiler::assign_predicate_registers() {
     m_predicate_map.resize(m_program.size(), UINT32_MAX);
 
     // For each stage
-    for (uint64_t stage_idx = 0; stage_idx < m_pipeline_stages.size(); ++stage_idx) {
+    for (auto stage_idx {0}; stage_idx < m_pipeline_stages.size(); ++stage_idx) {
         // Predicate register for this stage (p32 + stage_idx)
-        uint32_t predicate_reg = 32 + stage_idx;
+        const auto predicate_reg {num_non_rotating_registers + stage_idx};
 
         // For each bundle in this stage
-        for (uint64_t bundle_idx : m_pipeline_stages[stage_idx]) {
+        for (const auto bundle_idx : m_pipeline_stages[stage_idx]) {
             // For each instruction in this bundle
-            for (int slot_idx = 0; slot_idx < 5; ++slot_idx) {
-                const Instruction* instr = m_bundles[bundle_idx][slot_idx];
-                if (instr != nullptr) {
-                    // Get the instruction ID
-                    uint64_t instr_id = instr - &m_program[0];
-
-                    // Assign predicate register
-                    m_predicate_map[instr_id] = predicate_reg;
+            for (auto& instr : bundles.at(bundle_idx)) {
+                if (instr.op != Opcode::nop) {
+                    instr.pred = predicate_reg;
                 }
             }
         }
