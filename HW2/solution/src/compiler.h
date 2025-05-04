@@ -43,9 +43,10 @@ protected:
 private:
     /**
       * Check if the instruction is a consumer of any producers. Returns the
-      * instruction addresses of the producers.
+      * instruction addresses and the register id of the producers.
+      * @return {instruction id, register id}
       */
-    std::vector<uint32_t> find_instr_dependency(
+    std::vector<std::pair<uint32_t, uint32_t>> find_instr_dependency(
         const std::array<int32_t, num_registers_with_special>& producers,
         const Instruction& instr
     ) const;
