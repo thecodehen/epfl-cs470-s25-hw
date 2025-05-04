@@ -57,15 +57,25 @@ public:
     Opcode op;
     // dest also represents source for the st opcode
     uint32_t dest;
+    int32_t new_dest {-1};
     // op_a stores source in mov
     uint32_t op_a;
     uint32_t op_b;
     // imm also stores loopStart, true=1/false=0
     int64_t imm;
     uint64_t id;
+    // pred is the register that will determine whether the instruction is
+    // executed in a stage for loop.pip
+    int32_t pred {-1};
     bool has_been_renamed {};
     std::string to_string() const {
         std::string s;
+
+        // print the predicate register if needed
+        if (pred != -1) {
+            s += "(p" + std::to_string(pred) + ") ";
+        }
+
         switch (op) {
         case Opcode::add:
             s += "add";
@@ -100,26 +110,33 @@ public:
             s += "mov";
             break;
         }
-		if (op == Opcode::nop) {
-			return s;
-		}
+        if (op == Opcode::nop) {
+            return s;
+        }
         s += " ";
+
+        // print the new destination if it has been renamed
+        auto print_dest {dest};
+        if (new_dest != -1) {
+            print_dest = new_dest;
+        }
+
         switch (op) {
         case Opcode::add:
         case Opcode::sub:
         case Opcode::mulu:
-            s += "x" + std::to_string(dest) + ", ";
+            s += "x" + std::to_string(print_dest) + ", ";
             s += "x" + std::to_string(op_a) + ", ";
             s += "x" + std::to_string(op_b);
             break;
         case Opcode::addi:
-            s += "x" + std::to_string(dest) + ", ";
+            s += "x" + std::to_string(print_dest) + ", ";
             s += "x" + std::to_string(op_a) + ", ";
             s += std::to_string(imm);
             break;
         case Opcode::ld:
         case Opcode::st:
-            s += "x" + std::to_string(dest) + ", ";
+            s += "x" + std::to_string(print_dest) + ", ";
             s += std::to_string(imm);
             s += "(x" + std::to_string(op_a) + ")";
             break;
@@ -130,7 +147,7 @@ public:
         case Opcode::nop:
             break;
         case Opcode::movr:
-            s += "x" + std::to_string(dest) + ", ";
+            s += "x" + std::to_string(print_dest) + ", ";
             s += "p" + std::to_string(op_a);
             break;
         case Opcode::movi:
@@ -139,12 +156,12 @@ public:
             } else if (dest == ec_id) {
                 s += "EC";
             } else {
-                s += "x" + std::to_string(dest);
+                s += "x" + std::to_string(print_dest);
             }
             s += ", " + std::to_string(imm);
             break;
         case Opcode::movp:
-            s += "p" + std::to_string(dest) + ", ";
+            s += "p" + std::to_string(print_dest) + ", ";
             s += std::to_string(imm);
             break;
         }
