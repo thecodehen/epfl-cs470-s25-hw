@@ -123,17 +123,24 @@ std::vector<std::pair<uint32_t, uint32_t>> Compiler::find_instr_dependency(
     return results;
 }
 
+bool Compiler::is_producer(const Opcode opcode)
+{
+    if (opcode != Opcode::st &&
+        opcode != Opcode::loop &&
+        opcode != Opcode::loop_pip &&
+        opcode != Opcode::nop &&
+        opcode != Opcode::movp) {
+        // TODO: do we need to exclude movp?
+        return true;
+    }
+    return false;
+}
+
 void Compiler::update_producers(
     std::array<int32_t, num_registers_with_special>& producers,
     const int32_t instr_idx
 ) const {
-    const auto& instr = m_program.at(instr_idx);
-    if (instr.op != Opcode::st &&
-        instr.op != Opcode::loop &&
-        instr.op != Opcode::loop_pip &&
-        instr.op != Opcode::nop &&
-        instr.op != Opcode::movp) {
-        // TODO: do we need to exclude movp?
+    if (const auto& instr = m_program.at(instr_idx); is_producer(instr.op)) {
         assert(instr.dest < num_registers_with_special);
         producers.at(instr.dest) = instr_idx;
     }

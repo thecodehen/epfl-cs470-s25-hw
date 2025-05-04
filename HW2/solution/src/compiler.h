@@ -39,6 +39,8 @@ protected:
      */
     std::vector<Dependency> find_dependencies(std::vector<Block> blocks) const;
 
+    static bool is_producer(Opcode opcode);
+
     Program m_program;
 private:
     /**

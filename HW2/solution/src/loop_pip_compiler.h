@@ -6,6 +6,9 @@
 #include <array>
 #include <vector>
 
+using BundlePtr = std::array<const Instruction*, 5>;
+using Bundle = std::array<Instruction, 5>;
+
 class LoopPipCompiler : public Compiler {
 public:
     LoopPipCompiler(const Program& program)
@@ -28,13 +31,12 @@ private:
         RESERVED   // Slot is reserved due to pipeline stage overlap
     };
     
-    using Bundle = std::array<const Instruction*, 5>;
-    
+
     /**
      * Collection of bundles that form the schedule
      * Each bundle represents one cycle of execution
      */
-    std::vector<Bundle> m_bundles;
+    std::vector<BundlePtr> m_bundles;
     
     /**
      * Stores which slots are reserved in each bundle due to modulo scheduling
@@ -221,10 +223,15 @@ private:
      */
     void setup_pipeline_initialization();
 
-    void rename(
-        const std::vector<uint64_t> time_table,
-        const std::vector<Dependency> dependencies
+    std::vector<Bundle> rename(
+        const std::vector<uint64_t>& time_table,
+        const std::vector<Block>& basic_blocks,
+        const std::vector<Dependency>& dependencies
     );
+
+    void rename_loop_body_dest(
+        std::vector<std::array<Instruction, 5>>& bundles
+        ) const;
 
     /**
      * Renames registers in the program based on the loop invariant

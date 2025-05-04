@@ -31,13 +31,21 @@ VLIWProgram LoopPipCompiler::compile() {
     setup_pipeline_initialization();
 
     // rename registers
-    rename(time_table, dependencies);
+    const auto bundles = rename(time_table, basic_blocks, dependencies);
 
     // Create the final VLIW program
     VLIWProgram program;
 
     // For each bundle, create a VLIW instruction with all functional units
-    for (const auto& bundle : m_bundles) {
+    for (const auto& bundle : bundles) {
+        program.alu0_instructions.push_back(bundle[0]);
+        program.alu1_instructions.push_back(bundle[1]);
+        program.mult_instructions.push_back(bundle[2]);
+        program.mem_instructions.push_back(bundle[3]);
+        program.branch_instructions.push_back(bundle[4]);
+    }
+    /*
+    for (const auto& bundle : bundles) {
         // For each functional unit slot, use the assigned instruction or nop if empty
         Instruction alu0 = bundle[0] ? *bundle[0] : Instruction{Opcode::nop};
         Instruction alu1 = bundle[1] ? *bundle[1] : Instruction{Opcode::nop};
@@ -52,6 +60,7 @@ VLIWProgram LoopPipCompiler::compile() {
         program.mem_instructions.push_back(mem);
         program.branch_instructions.push_back(branch);
     }
+    */
 
     return program;
 }
@@ -696,18 +705,18 @@ void LoopPipCompiler::setup_pipeline_initialization() {
     // and inserting them into the schedule
 }
 
-void LoopPipCompiler::rename(
-    const std::vector<uint64_t> time_table,
-    const std::vector<Dependency> dependencies) {
+std::vector<Bundle> LoopPipCompiler::rename(
+        const std::vector<uint64_t>& time_table,
+        const std::vector<Block>& basic_blocks,
+        const std::vector<Dependency>& dependencies
+        ) {
     // copy the bundles
     auto bundles = std::vector<std::array<Instruction, 5>>{};
     for (const auto& bundle : m_bundles) {
         std::array<Instruction, 5> new_bundle;
-        new_bundle[0] = bundle[0] ? *bundle[0] : Instruction{Opcode::nop};
-        new_bundle[1] = bundle[1] ? *bundle[1] : Instruction{Opcode::nop};
-        new_bundle[2] = bundle[2] ? *bundle[2] : Instruction{Opcode::nop};
-        new_bundle[3] = bundle[3] ? *bundle[3] : Instruction{Opcode::nop};
-        new_bundle[4] = bundle[4] ? *bundle[4] : Instruction{Opcode::nop};
+        for (int i = 0; i < 5; ++i) {
+            new_bundle[i] = bundle[i] ? *bundle[i] : Instruction{Opcode::nop};
+        }
         bundles.push_back(new_bundle);
     }
 
@@ -716,7 +725,29 @@ void LoopPipCompiler::rename(
         return num_non_rotating_registers + i++;
     });
 
+    if (m_loop_start_time < m_loop_end_time) {
+        rename_loop_body_dest(bundles);
+    }
     rename_loop_invariant(dependencies);
+
+    return bundles;
+}
+
+void LoopPipCompiler::rename_loop_body_dest(
+    std::vector<Bundle>& bundles
+    ) const
+{
+    const auto num_stages {m_pipeline_stages.size()};
+    int32_t cur_reg {num_non_rotating_registers};
+    for (auto bundle_i {m_loop_start_time}; bundle_i < m_loop_end_time; ++bundle_i) {
+        auto& bundle {bundles.at(bundle_i)};
+        for (auto& instr : bundle) {
+            if (is_producer(instr.op)) {
+                instr.new_dest = cur_reg;
+                cur_reg += num_stages + 1;
+            }
+        }
+    }
 }
 
 void LoopPipCompiler::rename_loop_invariant(
@@ -724,10 +755,12 @@ void LoopPipCompiler::rename_loop_invariant(
     )
 {
     // set of producer instruction ids that need to be renamed
-    std::set<uint64_t> id_to_be_renamed;
+    std::vector<uint64_t> id_to_be_renamed;
     for (const auto& dependency : dependencies) {
         for (auto id : dependency.loop_invariant) {
-            id_to_be_renamed.insert(id);
+            if (std::find(id_to_be_renamed.begin(), id_to_be_renamed.end(), id) == id_to_be_renamed.end()) {
+                id_to_be_renamed.push_back(id);
+            }
         }
     }
     if (id_to_be_renamed.size() > num_non_rotating_registers) {
@@ -769,6 +802,6 @@ void LoopPipCompiler::rename_loop_invariant(
         auto& instr {m_program.at(id)};
 
         // rename the dest register
-        instr.dest = new_dest[instr.dest];
+        instr.new_dest = new_dest[instr.dest];
     }
 }
