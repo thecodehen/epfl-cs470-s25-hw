@@ -88,7 +88,7 @@ std::vector<uint64_t> LoopPipCompiler::schedule(
     // Then schedule the loop body (BB1) with pipelining
     if (basic_blocks.size() > 1) {
         m_loop_start_time = m_bundles.size(); // Mark start of loop
-        schedule_loop_body(time_table, basic_blocks, dependencies);
+        schedule_loop_body(time_table, basic_blocks.at(1), dependencies);
         m_loop_end_time = m_bundles.size(); // Mark end of loop
 
         // Finally, schedule post-loop code (BB2)
@@ -142,7 +142,6 @@ void LoopPipCompiler::schedule_asap(
     // Make sure we have enough bundles to consider
     while (m_bundles.size() <= lowest_time) {
         m_bundles.push_back({nullptr, nullptr, nullptr, nullptr, nullptr});
-        m_slot_status.push_back({OPEN, OPEN, OPEN, OPEN, OPEN});
     }
 
     // Try each bundle starting from the lowest possible time
@@ -154,7 +153,6 @@ void LoopPipCompiler::schedule_asap(
 
     // no suitable slot found in existing bundle, need to create a new bundle
     m_bundles.push_back({nullptr, nullptr, nullptr, nullptr, nullptr});
-    m_slot_status.push_back({OPEN, OPEN, OPEN, OPEN, OPEN});
     try_schedule(time_table, instr_id, m_bundles.size() - 1);
 }
 
@@ -219,6 +217,122 @@ bool LoopPipCompiler::try_schedule(
     return false;
 }
 
+bool LoopPipCompiler::check_slot_available(
+    const uint64_t instr_id
+) const
+{
+    switch (const auto& instr = m_program.at(instr_id); instr.op) {
+    case Opcode::add:
+    case Opcode::addi:
+    case Opcode::sub:
+    case Opcode::movi:
+    case Opcode::movr:
+    case Opcode::movp:
+    case Opcode::nop:
+        for (const auto& slot : m_slot_status) {
+            if (slot[0] == OPEN || slot[1] == OPEN) {
+                return true;
+            }
+        }
+        return false;
+    case Opcode::mulu:
+        for (const auto& slot : m_slot_status) {
+            if (slot[2] == OPEN) {
+                return true;
+            }
+        }
+        return false;
+    case Opcode::ld:
+    case Opcode::st:
+        for (const auto& slot : m_slot_status) {
+            if (slot[3] == OPEN) {
+                return true;
+            }
+        }
+        return false;
+    case Opcode::loop:
+    case Opcode::loop_pip:
+        for (const auto& slot : m_slot_status) {
+            if (slot[4] == OPEN) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    return false;
+}
+
+bool LoopPipCompiler::try_schedule_modulo(
+    std::vector<uint64_t>& time_table,
+    const uint64_t instr_id,
+    const uint64_t time
+    ) {
+    // Determine instruction type and check appropriate functional unit
+    const auto& instr = m_program.at(instr_id);
+
+    // Make sure we are scheduling the loop block
+    assert(time >= m_loop_start_time);
+    const auto status_index {(time - m_loop_start_time) % m_initiation_interval};
+
+    switch (instr.op) {
+    case Opcode::add:
+    case Opcode::addi:
+    case Opcode::sub:
+    case Opcode::movi:
+    case Opcode::movr:
+    case Opcode::movp:
+    case Opcode::nop:
+        // ALU operations - check ALU0 then ALU1
+        if (m_bundles.at(time)[0] == nullptr && m_slot_status.at(status_index)[0] == OPEN) {
+            // ALU0 is available
+            m_bundles.at(time)[0] = &instr;
+            m_slot_status.at(status_index)[0] = RESERVED;
+            time_table[instr_id] = time;
+            return true;
+        }
+        if (m_bundles.at(time)[1] == nullptr && m_slot_status.at(status_index)[1] == OPEN) {
+            // ALU1 is available
+            m_bundles.at(time)[1] = &instr;
+            m_slot_status.at(status_index)[1] = RESERVED;
+            time_table[instr_id] = time;
+            return true;
+        }
+        break;
+    case Opcode::mulu:
+        // Multiplication operation - check MUL unit
+        if (m_bundles.at(time)[2] == nullptr && m_slot_status.at(status_index)[2] == OPEN) {
+            m_bundles.at(time)[2] = &instr;
+            m_slot_status.at(status_index)[2] = RESERVED;
+            time_table[instr_id] = time;
+            return true;
+        }
+        break;
+    case Opcode::ld:
+    case Opcode::st:
+        // Memory operations - check MEM unit
+        if (m_bundles.at(time)[3] == nullptr && m_slot_status.at(status_index)[3] == OPEN) {
+            m_bundles.at(time)[3] = &instr;
+            m_slot_status.at(status_index)[3] = RESERVED;
+            time_table[instr_id] = time;
+            return true;
+        }
+        break;
+    case Opcode::loop:
+    case Opcode::loop_pip:
+        // Branch operations - check BRANCH unit
+        if (m_bundles.at(time)[4] == nullptr && m_slot_status.at(status_index)[4] == OPEN) {
+            m_bundles.at(time)[4] = &instr;
+            m_slot_status.at(status_index)[4] = RESERVED;
+            time_table[instr_id] = time;
+            return true;
+        }
+        break;
+    }
+
+    return false;
+}
+
 /**
  * Schedules the loop body with pipeline support
  * Implements modulo scheduling with resource reservation
@@ -226,11 +340,11 @@ bool LoopPipCompiler::try_schedule(
  */
 void LoopPipCompiler::schedule_loop_body(
     std::vector<uint64_t>& time_table,
-    const std::vector<Block>& basic_blocks,
+    const Block& bb1,
     const std::vector<Dependency>& dependencies
     ) {
     // If BB1 is empty, just set markers and return
-    if (basic_blocks[1].first >= basic_blocks[1].second) {
+    if (bb1.first >= bb1.second) {
         m_loop_start_time = m_bundles.size();
         m_loop_end_time = m_bundles.size();
         return;
@@ -238,44 +352,61 @@ void LoopPipCompiler::schedule_loop_body(
 
     // Collect all instruction IDs in the loop body
     std::vector<uint64_t> loop_instructions;
-    for (uint64_t i = basic_blocks[1].first; i < basic_blocks[1].second; ++i) {
+    for (uint64_t i = bb1.first; i < bb1.second; ++i) {
         loop_instructions.push_back(i);
     }
 
     // Calculate lowest possible time to start the loop based on dependencies
-    uint64_t lowest_start_time = calculate_loop_start_time(dependencies, basic_blocks[1], time_table);
+    uint64_t lowest_start_time = calculate_loop_start_time(dependencies, bb1, time_table);
+
+    // Remember current bundle size in case we need to retry
+    const auto saved_bundle_size = m_bundles.size();
 
     // Iteratively try to schedule with increasing II values
     while (true) {
-        // Remember current bundle size in case we need to retry
-        uint64_t saved_bundle_size = m_bundles.size();
+        // Restore bundle size
+        m_bundles.resize(saved_bundle_size);
+
+        // Fill slot status with OPEN slots
+        m_slot_status.resize(m_initiation_interval);
+        constexpr auto open_slot_status {std::array<SlotStatus, 5>{OPEN, OPEN, OPEN, OPEN, OPEN}};
+        std::fill(m_slot_status.begin(), m_slot_status.end(), open_slot_status);
 
         // Try to schedule all instructions except the last one (loop instruction)
-        for (uint64_t i = basic_blocks[1].first; i < basic_blocks[1].second - 1; ++i) {
-            uint64_t lowest_time = calculate_instruction_earliest_time(i, dependencies, time_table, lowest_start_time);
+        bool success {true};
+        for (uint64_t i = bb1.first; i < bb1.second - 1; ++i) {
+            const auto lowest_time = calculate_instruction_earliest_time(i, dependencies, time_table, lowest_start_time);
+            std::cout << "lowest_time for instruction " << i << ": " << lowest_time << std::endl;
 
             // Try to insert with modulo scheduling
-            if (!try_modulo_insert(i, lowest_time, time_table)) {
-                create_new_bundle_with_reservations(i, lowest_time, time_table);
+            if (!schedule_asap_modulo(time_table, i, lowest_time)) {
+                success = false;
+                break;
             }
         }
 
-        // Handle loop.pip instruction specially
-        uint64_t loop_instr_idx = basic_blocks[1].second - 1;
+        if (success) {
+            // Handle loop.pip instruction specially
+            const auto loop_instr_idx = bb1.second - 1;
 
-        // Store loop start address in the instruction
-        Instruction& loop_instr = const_cast<Instruction&>(m_program[loop_instr_idx]);
-        loop_instr.imm = lowest_start_time;
+            // Store loop start address in the instruction
+            auto& loop_instr = m_program.at(loop_instr_idx);
+            loop_instr.op = Opcode::loop_pip;
+            loop_instr.imm = m_loop_start_time;
 
-        // Place the loop.pip instruction at the end of the current scheduling
-        uint64_t loop_time = m_bundles.size() + calculate_time_after_loop(dependencies, loop_instructions, time_table, lowest_start_time);
+            // Place the loop.pip instruction at the end of the current scheduling
+            // uint64_t loop_time = m_bundles.size() + calculate_time_after_loop(dependencies, loop_instructions, time_table, lowest_start_time);
 
-        if (!try_modulo_insert(loop_instr_idx, loop_time, time_table)) {
-            create_new_bundle_with_reservations(loop_instr_idx, loop_time, time_table);
+            // if (!schedule_asap_modulo(time_table, loop_instr_idx, loop_time)) {
+            //     success = false;
+            // }
+
+            // schedule the loop at the end of stage 0
+            m_bundles.at(m_loop_start_time + m_initiation_interval - 1)[4] = &m_program.at(loop_instr_idx);
         }
 
         // Check if all interloop dependencies are satisfied
-        if (verify_pipeline_dependencies(time_table, loop_instructions)) {
+        if (success && verify_pipeline_dependencies(time_table, loop_instructions)) {
             // Valid schedule found
             break;
         }
@@ -283,14 +414,8 @@ void LoopPipCompiler::schedule_loop_body(
         // Increase II and try again
         m_initiation_interval++;
 
-        // Restore bundle size
-        while (m_bundles.size() > saved_bundle_size) {
-            m_bundles.pop_back();
-            m_slot_status.pop_back();
-        }
-
         // Clear time table entries for loop instructions
-        for (uint64_t i = basic_blocks[1].first; i < basic_blocks[1].second; ++i) {
+        for (uint64_t i = bb1.first; i < bb1.second; ++i) {
             time_table[i] = UINT64_MAX;
         }
     }
@@ -298,8 +423,6 @@ void LoopPipCompiler::schedule_loop_body(
     // Ensure loop body length is a multiple of II
     while ((m_bundles.size() - m_loop_start_time) % m_initiation_interval != 0) {
         m_bundles.push_back({nullptr, nullptr, nullptr, nullptr, nullptr});
-        m_slot_status.push_back({OPEN, OPEN, OPEN, OPEN, OPEN});
-        update_resource_reservations();
     }
 }
 
@@ -435,124 +558,27 @@ void LoopPipCompiler::schedule_postloop_block(std::vector<uint64_t>& time_table)
  * Attempts to insert an instruction with modulo scheduling
  * Reserves slots in other iterations according to the II
  */
-bool LoopPipCompiler::try_modulo_insert(uint64_t instr_id, uint64_t earliest_time,
-                                     std::vector<uint64_t>& time_table) {
-    const auto& instr = m_program[instr_id];
-
+bool LoopPipCompiler::schedule_asap_modulo(
+    std::vector<uint64_t>& time_table,
+    const uint64_t instr_id,
+    const uint64_t earliest_time)
+{
     // Make sure we have enough bundles to consider
     while (m_bundles.size() <= earliest_time) {
         m_bundles.push_back({nullptr, nullptr, nullptr, nullptr, nullptr});
-        m_slot_status.push_back({OPEN, OPEN, OPEN, OPEN, OPEN});
     }
 
     // Try each bundle starting from the earliest possible time
-    for (uint64_t bundle_idx = earliest_time; bundle_idx < m_bundles.size(); ++bundle_idx) {
-        int slot_idx = -1;
-
-        // Determine which slot to use based on instruction type
-        if (instr.op == Opcode::add || instr.op == Opcode::addi ||
-            instr.op == Opcode::sub || instr.op == Opcode::movi ||
-            instr.op == Opcode::movr || instr.op == Opcode::movp ||
-            instr.op == Opcode::nop) {
-            // ALU operations
-            if (m_bundles[bundle_idx][0] == nullptr && m_slot_status[bundle_idx][0] == OPEN) {
-                slot_idx = 0; // ALU0
-            } else if (m_bundles[bundle_idx][1] == nullptr && m_slot_status[bundle_idx][1] == OPEN) {
-                slot_idx = 1; // ALU1
-            }
-        } else if (instr.op == Opcode::mulu) {
-            // Multiplication operation
-            if (m_bundles[bundle_idx][2] == nullptr && m_slot_status[bundle_idx][2] == OPEN) {
-                slot_idx = 2; // MUL
-            }
-        } else if (instr.op == Opcode::ld || instr.op == Opcode::st) {
-            // Memory operations
-            if (m_bundles[bundle_idx][3] == nullptr && m_slot_status[bundle_idx][3] == OPEN) {
-                slot_idx = 3; // MEM
-            }
-        } else if (instr.op == Opcode::loop || instr.op == Opcode::loop_pip) {
-            // Branch operations
-            if (m_bundles[bundle_idx][4] == nullptr && m_slot_status[bundle_idx][4] == OPEN) {
-                slot_idx = 4; // BRANCH
-            }
-        }
-
-        if (slot_idx >= 0) {
-            // Found a suitable slot
-            m_bundles[bundle_idx][slot_idx] = &instr;
-            time_table[instr_id] = bundle_idx;
-
-            // Reserve slots at II-distance bundles
-            for (uint64_t other_idx = m_loop_start_time; other_idx < m_bundles.size(); ++other_idx) {
-                // If bundle is at II-distance and not the current bundle
-                if (other_idx != bundle_idx && (other_idx - bundle_idx) % m_initiation_interval == 0) {
-                    m_slot_status[other_idx][slot_idx] = RESERVED;
-                }
-            }
-
+    for (auto time {earliest_time}; check_slot_available(instr_id); ++time) {
+        if (try_schedule_modulo(time_table, instr_id, time)) {
             return true;
         }
+
+        // no suitable slot found in existing bundle, need to create a new bundle
+        m_bundles.push_back({nullptr, nullptr, nullptr, nullptr, nullptr});
     }
 
     return false;
-}
-
-/**
- * Appends a new bundle with modulo scheduling support
- * Used when insertion fails
- * Also handles resource reservation
- */
-void LoopPipCompiler::create_new_bundle_with_reservations(uint64_t instr_id, uint64_t earliest_time,
-                                                       std::vector<uint64_t>& time_table) {
-    const auto& instr = m_program[instr_id];
-
-    // Make sure we have enough bundles up to earliest_time
-    while (m_bundles.size() <= earliest_time) {
-        m_bundles.push_back({nullptr, nullptr, nullptr, nullptr, nullptr});
-        m_slot_status.push_back({OPEN, OPEN, OPEN, OPEN, OPEN});
-    }
-
-    // Create a new bundle
-    m_bundles.push_back({nullptr, nullptr, nullptr, nullptr, nullptr});
-    m_slot_status.push_back({OPEN, OPEN, OPEN, OPEN, OPEN});
-
-    // Update reservations for all existing bundles
-    update_resource_reservations();
-
-    uint64_t bundle_idx = m_bundles.size() - 1;
-
-    // Try to insert in the appropriate slot
-    int slot_idx = -1;
-
-    // Determine which slot to use based on instruction type
-    if (instr.op == Opcode::add || instr.op == Opcode::addi ||
-        instr.op == Opcode::sub || instr.op == Opcode::movi ||
-        instr.op == Opcode::movr || instr.op == Opcode::movp ||
-        instr.op == Opcode::nop) {
-        // ALU operations
-        slot_idx = 0; // ALU0
-    } else if (instr.op == Opcode::mulu) {
-        // Multiplication operation
-        slot_idx = 2; // MUL
-    } else if (instr.op == Opcode::ld || instr.op == Opcode::st) {
-        // Memory operations
-        slot_idx = 3; // MEM
-    } else if (instr.op == Opcode::loop || instr.op == Opcode::loop_pip) {
-        // Branch operations
-        slot_idx = 4; // BRANCH
-    }
-
-    // Assign instruction to slot
-    m_bundles[bundle_idx][slot_idx] = &instr;
-    time_table[instr_id] = bundle_idx;
-
-    // Reserve slots at II-distance bundles
-    for (uint64_t other_idx = m_loop_start_time; other_idx < m_bundles.size(); ++other_idx) {
-        // If bundle is at II-distance and not the current bundle
-        if (other_idx != bundle_idx && (other_idx - bundle_idx) % m_initiation_interval == 0) {
-            m_slot_status[other_idx][slot_idx] = RESERVED;
-        }
-    }
 }
 
 /**
@@ -689,7 +715,7 @@ void LoopPipCompiler::assign_predicate_registers(
         for (const auto bundle_idx : m_pipeline_stages[stage_idx]) {
             // For each instruction in this bundle
             for (auto& instr : bundles.at(bundle_idx)) {
-                if (instr.op != Opcode::nop) {
+                if (instr.op != Opcode::nop && instr.op != Opcode::loop_pip) {
                     instr.pred = predicate_reg;
                 }
             }

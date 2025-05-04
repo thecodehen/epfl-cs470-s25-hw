@@ -107,7 +107,7 @@ private:
      */
     void schedule_loop_body(
         std::vector<uint64_t>& time_table,
-        const std::vector<Block>& basic_blocks,
+        const Block& bb1,
         const std::vector<Dependency>& dependencies
         );
     
@@ -135,6 +135,20 @@ private:
      * If unsuccessful, return false.
      */
     bool try_schedule(
+        std::vector<uint64_t>& time_table,
+        uint64_t instr_id,
+        uint64_t time
+        );
+
+    /**
+     * Checks if a slot is available for scheduling.
+     *
+     * @param instr_id
+     * @return true if a slot is available, false otherwise
+     */
+    bool check_slot_available(uint64_t instr_id) const;
+
+    bool try_schedule_modulo(
         std::vector<uint64_t>& time_table,
         uint64_t instr_id,
         uint64_t time
@@ -172,8 +186,11 @@ private:
      * @param time_table Mapping of instruction IDs to bundle IDs
      * @return true if inserted successfully, false otherwise
      */
-    bool try_modulo_insert(uint64_t instr_id, uint64_t earliest_time, 
-                          std::vector<uint64_t>& time_table);
+    bool schedule_asap_modulo(
+        std::vector<uint64_t>& time_table,
+        uint64_t instr_id,
+        uint64_t earliest_time
+        );
     
     /**
      * Appends a new bundle with modulo scheduling support
