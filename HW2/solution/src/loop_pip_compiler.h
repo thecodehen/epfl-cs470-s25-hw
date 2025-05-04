@@ -223,6 +223,8 @@ private:
      */
     void setup_pipeline_initialization();
 
+    void compress_pipeline(std::vector<Bundle>& bundles) const;
+
     std::vector<Bundle> rename(
         const std::vector<uint64_t>& time_table,
         const std::vector<Block>& basic_blocks,

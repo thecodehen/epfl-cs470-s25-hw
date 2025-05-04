@@ -4,6 +4,7 @@
 #include "json.hpp"
 
 #include <cstdint>
+#include <iomanip>
 #include <iostream>
 #include <vector>
 
@@ -195,6 +196,23 @@ public:
         }
 
         return j;
+    }
+    void print() const
+    {
+        const std::size_t size {alu0_instructions.size()};
+        std::cout << "VLIW Program:\n";
+        for (std::size_t i {0}; i < size; ++i) {
+            constexpr auto instr_width{20};
+            constexpr auto index_width{15};
+            std::cout << std::string(index_width - 6, ' ');
+            std::cout << std::setfill('0') << std::setw(5) << i << '|' << std::setfill(' ');
+            std::cout << std::setw(instr_width) << alu0_instructions[i].to_string();
+            std::cout << std::setw(instr_width) << alu1_instructions[i].to_string();
+            std::cout << std::setw(instr_width) << mult_instructions[i].to_string();
+            std::cout << std::setw(instr_width) << mem_instructions[i].to_string();
+            std::cout << std::setw(instr_width) << branch_instructions[i].to_string();
+            std::cout << '\n';
+        }
     }
 };
 

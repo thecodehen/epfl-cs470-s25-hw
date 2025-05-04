@@ -71,6 +71,7 @@ int main(int argc, char *argv[]) {
     LoopPipCompiler loop_pip_compiler{v};
     VLIWProgram loop_pip_program = loop_pip_compiler.compile();
     write_json(output_loop_pip_file, loop_pip_program.to_json());
+    loop_pip_program.print();
 
     // close files
     input_file.close();

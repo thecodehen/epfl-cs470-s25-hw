@@ -31,7 +31,8 @@ VLIWProgram LoopPipCompiler::compile() {
     setup_pipeline_initialization();
 
     // rename registers
-    const auto bundles = rename(time_table, basic_blocks, dependencies);
+    auto bundles = rename(time_table, basic_blocks, dependencies);
+    compress_pipeline(bundles);
 
     // Create the final VLIW program
     VLIWProgram program;
@@ -628,8 +629,8 @@ void LoopPipCompiler::organize_pipeline_stages() {
     m_pipeline_stages.clear();
 
     // Calculate number of stages
-    uint64_t loop_length = m_loop_end_time - m_loop_start_time;
-    uint64_t num_stages = (loop_length + m_initiation_interval - 1) / m_initiation_interval;
+    const auto loop_length = m_loop_end_time - m_loop_start_time;
+    const auto num_stages = (loop_length + m_initiation_interval - 1) / m_initiation_interval;
 
     // Initialize stages
     m_pipeline_stages.resize(num_stages);
@@ -638,7 +639,7 @@ void LoopPipCompiler::organize_pipeline_stages() {
     uint64_t stage_idx = 0;
     uint64_t bundle_in_stage = 0;
 
-    for (uint64_t bundle_idx = m_loop_start_time; bundle_idx < m_loop_end_time; ++bundle_idx) {
+    for (auto bundle_idx {m_loop_start_time}; bundle_idx < m_loop_end_time; ++bundle_idx) {
         // Add this bundle to the current stage
         m_pipeline_stages[stage_idx].push_back(bundle_idx);
 
@@ -648,6 +649,15 @@ void LoopPipCompiler::organize_pipeline_stages() {
             stage_idx++;
             bundle_in_stage = 0;
         }
+    }
+
+    std::cout << "Pipeline stages organized into " << num_stages << " stages." << std::endl;
+    for (const auto& stage : m_pipeline_stages) {
+        std::cout << "Stage: ";
+        for (const auto& bundle : stage) {
+            std::cout << bundle << " ";
+        }
+        std::cout << std::endl;
     }
 }
 
@@ -703,6 +713,32 @@ void LoopPipCompiler::setup_pipeline_initialization() {
     // For now, we leave this as a placeholder
     // The full implementation would require creating new instructions
     // and inserting them into the schedule
+}
+
+void LoopPipCompiler::compress_pipeline(std::vector<Bundle>& bundles) const
+{
+    const auto num_stages {m_pipeline_stages.size()};
+
+    // copy the instructions to the first stage, will need to set the predicates
+    // later
+    for (auto stage_idx {1}; stage_idx < num_stages; ++stage_idx) {
+        for (const auto bundle_idx : m_pipeline_stages[stage_idx]) {
+            const auto& bundle_from {bundles.at(bundle_idx)};
+            auto& bundle_to {bundles.at(bundle_idx - m_initiation_interval * stage_idx)};
+            for (auto i {0}; i < bundle_from.size(); ++i) {
+                if (bundle_from.at(i).op != Opcode::nop) {
+                    assert(bundle_to.at(i).op == Opcode::nop);
+                    bundle_to.at(i) = bundle_from.at(i);
+                }
+            }
+        }
+    }
+
+    // remove the instructions from later stages
+    bundles.erase(
+        bundles.begin() + m_loop_start_time + m_initiation_interval,
+        bundles.begin() + m_loop_end_time
+    );
 }
 
 std::vector<Bundle> LoopPipCompiler::rename(
