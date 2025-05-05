@@ -141,9 +141,7 @@ void LoopPipCompiler::schedule_asap(
     const uint64_t lowest_time
     ) {
     // Make sure we have enough bundles to consider
-    while (m_bundles.size() <= lowest_time) {
-        m_bundles.push_back({nullptr, nullptr, nullptr, nullptr, nullptr});
-    }
+    m_bundles.resize(lowest_time + 1);
 
     // Try each bundle starting from the lowest possible time
     for (auto i_bundle {lowest_time}; i_bundle < m_bundles.size(); ++i_bundle) {
@@ -153,7 +151,7 @@ void LoopPipCompiler::schedule_asap(
     }
 
     // no suitable slot found in existing bundle, need to create a new bundle
-    m_bundles.push_back({nullptr, nullptr, nullptr, nullptr, nullptr});
+    m_bundles.push_back({});
     try_schedule(time_table, instr_id, m_bundles.size() - 1);
 }
 
