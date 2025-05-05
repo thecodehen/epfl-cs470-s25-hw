@@ -28,10 +28,10 @@ VLIWProgram LoopPipCompiler::compile() {
         // Assign predicate registers to instructions based on stage
         assign_predicate_registers(bundles);
 
-        // Add initialization instructions for predicates and EC
-        setup_pipeline_initialization();
-
         compress_pipeline(bundles);
+
+        // Add initialization instructions for predicates and EC
+        setup_pipeline_initialization(bundles);
     }
 
     // Create the final VLIW program
@@ -733,7 +733,8 @@ void LoopPipCompiler::assign_predicate_registers(
  * Creates initialization code for predicates and EC register
  * Adds mov instructions before the loop.pip instruction
  */
-void LoopPipCompiler::setup_pipeline_initialization() {
+void LoopPipCompiler::setup_pipeline_initialization(std::vector<Bundle>& bundles) const
+{
     // TODO: Implement this function to:
     // 1. Find the bundle just before the loop.pip instruction
     // 2. Add a mov instruction to initialize p32 to true
@@ -745,6 +746,57 @@ void LoopPipCompiler::setup_pipeline_initialization() {
     // For now, we leave this as a placeholder
     // The full implementation would require creating new instructions
     // and inserting them into the schedule
+    std::vector instr_to_schedule {
+        Instruction {
+            .op = Opcode::movi,
+            .dest = ec_id,
+            .imm = static_cast<int64_t>(m_pipeline_stages.size() - 1)
+        },
+        Instruction {
+            .op = Opcode::movp,
+            .dest = num_non_rotating_registers,
+            .imm = 1 // true
+        }
+    };
+    // m_loop_start_time should not be 0 since the user always need to specify
+    // LC, which takes at least one instruction
+    assert(m_loop_start_time > 0);
+    auto& bundle_before_loop {bundles.at(m_loop_start_time - 1)};
+    if (bundle_before_loop.at(0).op == Opcode::nop) {
+        bundle_before_loop.at(0) = instr_to_schedule.back();
+        instr_to_schedule.pop_back();
+    }
+    if (bundle_before_loop.at(1).op == Opcode::nop) {
+        bundle_before_loop.at(1) = instr_to_schedule.back();
+        instr_to_schedule.pop_back();
+    }
+    if (!instr_to_schedule.empty()) {
+        // need to add a new bundle and adjust the loop start time
+        constexpr Bundle empty_bundle {
+            Instruction {.op = Opcode::nop},
+            Instruction {.op = Opcode::nop},
+            Instruction {.op = Opcode::nop},
+            Instruction {.op = Opcode::nop},
+            Instruction {.op = Opcode::nop}
+        };
+        bundles.insert(std::next(bundles.begin(), m_loop_start_time), empty_bundle);
+
+        // bundle_before_loop no longer valid, get a new one
+        auto& new_bundle_before_loop = bundles.at(m_loop_start_time);
+        new_bundle_before_loop.at(0) = instr_to_schedule.back();
+        instr_to_schedule.pop_back();
+        if (!instr_to_schedule.empty()) {
+            new_bundle_before_loop.at(1) = instr_to_schedule.back();
+        }
+
+        // change the loop start time
+        for (auto& bundle : bundles) {
+            if (bundle[4].op == Opcode::loop_pip) {
+                bundle[4].imm += 1;
+                break;
+            }
+        }
+    }
 }
 
 void LoopPipCompiler::compress_pipeline(std::vector<Bundle>& bundles) const

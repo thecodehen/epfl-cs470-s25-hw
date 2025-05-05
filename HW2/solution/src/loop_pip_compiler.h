@@ -245,7 +245,7 @@ private:
      * Creates initialization code for predicates and EC register
      * Adds mov instructions before the loop.pip instruction
      */
-    void setup_pipeline_initialization();
+    void setup_pipeline_initialization(std::vector<Bundle>& bundles) const;
 
     void compress_pipeline(std::vector<Bundle>& bundles) const;
 
