@@ -81,8 +81,19 @@ private:
                std::vector<uint64_t>& time_table) const;
                
     /**
+     * Inserts a mov instruction at the end of the loop
+     * Used for handling interloop dependencies
+     * 
+     * @param dest_reg The destination register for the mov
+     * @param src_reg The source register for the mov
+     * @param time_table Mapping of instruction IDs to bundle IDs (will be updated)
+     */
+    void insert_mov_at_end_of_loop(uint32_t dest_reg, uint32_t src_reg,
+                                 std::vector<uint64_t>& time_table) const;
+                                 
+    /**
      * Perform register allocation (allocb algorithm)
-     * Implements the three-phase register allocation described in section 3.3.1
+     * Implements the register allocation described in section 3.3.1
      * 1. Allocate unique registers to each instruction producing a value
      * 2. Link operands to the newly allocated registers
      * 3. Fix interloop dependencies with mov instructions

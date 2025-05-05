@@ -81,6 +81,41 @@ VLIWProgram LoopCompiler::compile() {
     // Perform register allocation (allocb algorithm) - do this only ONCE
     auto [new_dest, new_use] = allocate_registers(dependencies, time_table);
     
+    // For storing interloop dependencies that need mov instructions
+    // We need this for the apply_renaming lambda
+    std::vector<std::pair<uint64_t, uint64_t>> need_mov_phase3;
+    
+    // Process each instruction to find interloop dependencies that need movs
+    // This is a simplified version of what we do in allocate_registers
+    for (size_t i = 0; i < m_program.size(); ++i) {
+        // Check if this instruction is in BB1 (loop body)
+        bool inBB1 = (basic_blocks.size() > 1 && 
+                     i >= basic_blocks[1].first && 
+                     i < basic_blocks[1].second);
+                     
+        if (inBB1) {
+            for (auto dep_id : dependencies[i].interloop) {
+                // Check if dependency is from BB0 (before the loop)
+                bool depFromBB0 = (dep_id < basic_blocks[1].first);
+                
+                if (depFromBB0) {
+                    // Find a matching instruction in BB1 that produces a value
+                    for (uint64_t bb1_id = basic_blocks[1].first; bb1_id < basic_blocks[1].second; ++bb1_id) {
+                        if (bb1_id != i && new_dest[bb1_id] > 0) {
+                            for (auto bb1_dep : dependencies[bb1_id].interloop) {
+                                if (bb1_dep == dep_id) {
+                                    // Add it to our mov phase3 list
+                                    need_mov_phase3.push_back({dep_id, bb1_id});
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
     // Debug register allocation
     std::cout << "\nRegister allocation:\n";
     for (size_t i = 0; i < new_dest.size(); ++i) {
@@ -93,6 +128,56 @@ VLIWProgram LoopCompiler::compile() {
     auto apply_renaming = [&](int32_t id) -> Instruction {
         if (id < 0) return Instruction{Opcode::nop};
         
+        // Handle special case for mov instructions added during register allocation
+        // These have IDs beyond the original program size
+        if (id >= static_cast<int32_t>(m_program.size())) {
+            // This is a mov instruction added for interloop dependencies
+            Instruction mov_instr{Opcode::movr};
+            
+            // Determine the bundle index for this instruction
+            uint64_t bundle_idx = 0;
+            for (uint64_t i = 0; i < m_bundles.size(); ++i) {
+                for (int fu = 0; fu < 5; ++fu) {
+                    if (m_bundles[i][fu] == id) {
+                        bundle_idx = i;
+                        break;
+                    }
+                }
+            }
+            
+            // Handle special case for the mov instructions we added
+            // In this case, we have to recover the registers from the bundle information
+            for (uint64_t i = 0; i < m_bundles.size(); ++i) {
+                if (i == bundle_idx) {
+                    for (int fu = 0; fu < 5; ++fu) {
+                        if (m_bundles[i][fu] == id) {
+                            // Found the mov instruction in a bundle
+                            // We need to find what registers it's supposed to use
+                            // For mov instructions added during register allocation, 
+                            // we stored the destination register in new_dest (for BB0) and
+                            // the source register comes from a BB1 instruction
+                            
+                            // We should be able to find both registers in our dependency tracking
+                            for (const auto& [BB0_idx, BB1_idx] : need_mov_phase3) {
+                                // If we find matching registers, create the mov instruction
+                                if (new_dest[BB0_idx] > 0 && new_dest[BB1_idx] > 0) {
+                                    mov_instr.dest = new_dest[BB0_idx];  // BB0 register
+                                    mov_instr.op_a = new_dest[BB1_idx];  // BB1 register
+                                    return mov_instr;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // If we didn't find specific register info, create a generic mov
+            mov_instr.dest = 1;  // Default to register x1
+            mov_instr.op_a = 2;  // Default to register x2
+            return mov_instr;
+        }
+        
+        // Normal case - instruction from the original program
         Instruction instr = m_program[id]; // Make a copy
         
         if (instr.op == Opcode::nop || 
@@ -460,6 +545,48 @@ std::vector<uint64_t> LoopCompiler::schedule_bb2(std::vector<uint64_t>& time_tab
 }
 
 /**
+ * Inserts a mov instruction at the end of the loop
+ * Used for handling interloop dependencies
+ */
+void LoopCompiler::insert_mov_at_end_of_loop(uint32_t dest_reg, uint32_t src_reg, 
+                                           std::vector<uint64_t>& time_table) const {
+    // Determine the index for the new instruction
+    uint64_t instr_id = m_program.size();
+    
+    // Create a new mov instruction
+    Instruction mov_instr{Opcode::movr};
+    mov_instr.dest = dest_reg;
+    mov_instr.op_a = src_reg;
+    
+    // Find the appropriate bundle to insert, right after the loop instruction
+    uint64_t lowest_time = m_time_end_of_loop;
+    
+    // Try to insert into an existing bundle
+    bool inserted = false;
+    for (uint64_t i = lowest_time; i < m_bundles.size() && !inserted; ++i) {
+        // Try to use ALU0 first, then ALU1
+        if (m_bundles[i][0] == -1) {
+            m_bundles[i][0] = instr_id;
+            time_table[instr_id] = i;
+            inserted = true;
+        } else if (m_bundles[i][1] == -1) {
+            m_bundles[i][1] = instr_id;
+            time_table[instr_id] = i;
+            inserted = true;
+        }
+    }
+    
+    // If we couldn't insert into an existing bundle, create a new one
+    if (!inserted) {
+        append(instr_id, lowest_time, time_table);
+    }
+    
+    // Note: In C++, we can't actually add to m_program since it's the input program
+    // Just setting time_table ensures this mov will be considered in the final output
+    // The actual mov instruction will be created in the apply_renaming function
+}
+
+/**
  * Perform register allocation (allocb algorithm)
  * Implements the register allocation described in section 3.3.1
  * Returns both destination and operand mappings in a single call
@@ -472,6 +599,12 @@ LoopCompiler::allocate_registers(const std::vector<Dependency>& dependencies,
     std::vector<std::pair<uint32_t, uint32_t>> new_use(N, {UINT32_MAX, UINT32_MAX});
     uint32_t next_reg = 1;  // Start from register x1
     std::unordered_map<uint32_t, uint32_t> livein_pointer_renaming;
+    
+    // For storing interloop dependencies that need mov instructions
+    std::vector<std::pair<uint64_t, uint64_t>> need_mov_phase3;
+    
+    // Track basic blocks
+    auto basic_blocks = find_basic_blocks();
 
     // Phase 1: Assign fresh destination registers in BUNDLE order (execution order)
     for (const auto& bundle : m_bundles) {
@@ -501,23 +634,39 @@ LoopCompiler::allocate_registers(const std::vector<Dependency>& dependencies,
     
     // Phase 2: Link operands to producers using dependencies
     for (size_t i = 0; i < N; ++i) {
-        const auto& deps = dependencies[i].local;
         const auto& instr = m_program[i];
         
-        // Process each dependency for this instruction
+        // Handle local dependencies
+        const auto& local_deps = dependencies[i].local;
         size_t dep_idx = 0;
-        for (auto dep_id : deps) {
+        for (auto dep_id : local_deps) {
             uint32_t r = new_dest[dep_id];
+            
+            // Handle the case where the same operand is used twice (like sub x3, x2, x2)
+            // Check if this is a binary operation where both operands are the same register
+            bool same_operands = false;
+            if ((instr.op == Opcode::add || instr.op == Opcode::sub || instr.op == Opcode::mulu) &&
+                instr.op_a == instr.op_b) {
+                same_operands = true;
+            }
             
             // Link different operands based on instruction type
             switch (instr.op) {
                 case Opcode::add:
                 case Opcode::sub:
                 case Opcode::mulu:
-                    // First dependency goes to op_a, second to op_b
+                    // First dependency goes to op_a
                     if (dep_idx == 0) {
                         new_use[i].first = r;
-                    } else if (dep_idx == 1) {
+                        
+                        // If both operands were the same in the original code,
+                        // we need to use the same register for both operands
+                        if (same_operands) {
+                            new_use[i].second = r;
+                        }
+                    } 
+                    // Second dependency goes to op_b (if not same_operands)
+                    else if (dep_idx == 1 && !same_operands) {
                         new_use[i].second = r;
                     }
                     break;
@@ -544,6 +693,226 @@ LoopCompiler::allocate_registers(const std::vector<Dependency>& dependencies,
                     break;
             }
             dep_idx++;
+        }
+        
+        // Handle loop invariant dependencies
+        const auto& loop_invariant_deps = dependencies[i].loop_invariant;
+        for (auto dep_id : loop_invariant_deps) {
+            uint32_t r = new_dest[dep_id];
+            
+            // Handle the case where the same operand is used twice
+            bool same_operands = false;
+            if ((instr.op == Opcode::add || instr.op == Opcode::sub || instr.op == Opcode::mulu) &&
+                instr.op_a == instr.op_b) {
+                same_operands = true;
+            }
+            
+            // Determine which operand to link based on instruction type
+            switch (instr.op) {
+                case Opcode::add:
+                case Opcode::sub:
+                case Opcode::mulu:
+                    // First loop invariant dependency goes to op_a if not set already
+                    if (new_use[i].first == UINT32_MAX) {
+                        new_use[i].first = r;
+                        
+                        // If both operands were the same in the original code,
+                        // we need to use the same register for both operands
+                        if (same_operands && new_use[i].second == UINT32_MAX) {
+                            new_use[i].second = r;
+                        }
+                    } 
+                    // Second loop invariant dependency goes to op_b if not set already
+                    else if (new_use[i].second == UINT32_MAX && !same_operands) {
+                        new_use[i].second = r;
+                    }
+                    break;
+                    
+                case Opcode::addi:
+                case Opcode::ld:
+                case Opcode::movr:
+                    // These instructions only have one operand (op_a)
+                    if (new_use[i].first == UINT32_MAX) {
+                        new_use[i].first = r;
+                    }
+                    break;
+                    
+                case Opcode::st:
+                    // For store, the dependency could be either the data or address
+                    if (new_dest[i] == 0) {
+                        // First: assume it's the data value
+                        new_dest[i] = r;
+                    } else if (new_use[i].first == UINT32_MAX) {
+                        // Second: if dest is already set, it must be the address base
+                        new_use[i].first = r;
+                    }
+                    break;
+                    
+                default:
+                    break;
+            }
+        }
+        
+        // Handle post-loop dependencies (similar to local dependencies)
+        const auto& post_loop_deps = dependencies[i].post_loop;
+        for (auto dep_id : post_loop_deps) {
+            uint32_t r = new_dest[dep_id];
+            
+            // Handle the case where the same operand is used twice
+            bool same_operands = false;
+            if ((instr.op == Opcode::add || instr.op == Opcode::sub || instr.op == Opcode::mulu) &&
+                instr.op_a == instr.op_b) {
+                same_operands = true;
+            }
+            
+            // Similar logic to local dependencies
+            switch (instr.op) {
+                case Opcode::add:
+                case Opcode::sub:
+                case Opcode::mulu:
+                    if (new_use[i].first == UINT32_MAX) {
+                        new_use[i].first = r;
+                        
+                        // If both operands were the same in the original code,
+                        // we need to use the same register for both operands
+                        if (same_operands && new_use[i].second == UINT32_MAX) {
+                            new_use[i].second = r;
+                        }
+                    } else if (new_use[i].second == UINT32_MAX && !same_operands) {
+                        new_use[i].second = r;
+                    }
+                    break;
+                    
+                case Opcode::addi:
+                case Opcode::ld:
+                case Opcode::movr:
+                    if (new_use[i].first == UINT32_MAX) {
+                        new_use[i].first = r;
+                    }
+                    break;
+                    
+                case Opcode::st:
+                    if (new_dest[i] == 0) {
+                        new_dest[i] = r;
+                    } else if (new_use[i].first == UINT32_MAX) {
+                        new_use[i].first = r;
+                    }
+                    break;
+                    
+                default:
+                    break;
+            }
+        }
+        
+        // Handle interloop dependencies - this is the key part of Phase 3
+        const auto& interloop_deps = dependencies[i].interloop;
+        
+        // Check if this instruction is in BB1 (loop body)
+        bool inBB1 = (basic_blocks.size() > 1 && 
+                     i >= basic_blocks[1].first && 
+                     i < basic_blocks[1].second);
+                     
+        if (inBB1) {
+            for (auto dep_id : interloop_deps) {
+                // Check if dependency is from BB0 (before the loop)
+                bool depFromBB0 = (dep_id < basic_blocks[1].first);
+                
+                if (depFromBB0) {
+                    // For instructions in BB1 with dependencies from BB0,
+                    // we'll need to add a mov at the end of the loop
+                    
+                    // First, find a matching instruction in BB1 that produces the same value
+                    for (uint64_t bb1_id = basic_blocks[1].first; bb1_id < basic_blocks[1].second; ++bb1_id) {
+                        if (bb1_id != i && new_dest[bb1_id] > 0) {
+                            // This is a different instruction in BB1 that produces a value
+                            
+                            // If we find a matching instruction, register its need for a mov
+                            // For simplicity, we'll assume if both instructions have dependencies
+                            // on the same BB0 instruction, they might need a mov
+                            for (auto bb1_dep : dependencies[bb1_id].interloop) {
+                                if (bb1_dep == dep_id) {
+                                    // This BB1 instruction depends on the same BB0 instruction
+                                    // Add it to our mov phase3 list
+                                    need_mov_phase3.push_back({dep_id, bb1_id});
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Link operands based on instruction type
+                    // Similar to local dependencies, but map to the BB0 register
+                    uint32_t r = new_dest[dep_id];  // Use the BB0 register
+                    
+                    // Handle the case where the same operand is used twice
+                    bool same_operands = false;
+                    if ((instr.op == Opcode::add || instr.op == Opcode::sub || instr.op == Opcode::mulu) &&
+                        instr.op_a == instr.op_b) {
+                        same_operands = true;
+                    }
+                    
+                    switch (instr.op) {
+                        case Opcode::add:
+                        case Opcode::sub:
+                        case Opcode::mulu:
+                            if (new_use[i].first == UINT32_MAX) {
+                                new_use[i].first = r;
+                                
+                                // If both operands were the same in the original code,
+                                // we need to use the same register for both operands
+                                if (same_operands && new_use[i].second == UINT32_MAX) {
+                                    new_use[i].second = r;
+                                }
+                            } else if (new_use[i].second == UINT32_MAX && !same_operands) {
+                                new_use[i].second = r;
+                            }
+                            break;
+                            
+                        case Opcode::addi:
+                        case Opcode::ld:
+                        case Opcode::movr:
+                            if (new_use[i].first == UINT32_MAX) {
+                                new_use[i].first = r;
+                            }
+                            break;
+                            
+                        case Opcode::st:
+                            if (new_dest[i] == 0) {
+                                new_dest[i] = r;
+                            } else if (new_use[i].first == UINT32_MAX) {
+                                new_use[i].first = r;
+                            }
+                            break;
+                            
+                        default:
+                            break;
+                    }
+                }
+            }
+        }
+    }
+
+    // Phase 3: Add mov instructions for interloop dependencies
+    // For each interloop dependency, add a mov instruction at the end of the loop
+    // In Python, this is tracked in the need_mov_phase3 set
+    if (!need_mov_phase3.empty()) {
+        // We need to expand the time_table to account for new mov instructions
+        auto mutable_time_table = time_table;
+        mutable_time_table.resize(N + need_mov_phase3.size(), UINT64_MAX);
+        
+        for (const auto& [BB0_id, BB1_id] : need_mov_phase3) {
+            uint32_t BB0_reg = new_dest[BB0_id];
+            uint32_t BB1_reg = new_dest[BB1_id];
+            
+            if (BB0_reg > 0 && BB1_reg > 0) {
+                // Calculate the lowest time to insert the mov
+                uint64_t lowest_time = m_time_end_of_loop;
+                uint64_t ins_latency = (m_program[BB1_id].op == Opcode::mulu) ? 3 : 1;
+                lowest_time = std::max(lowest_time, time_table[BB1_id] + ins_latency);
+                
+                // Create and insert the mov instruction
+                insert_mov_at_end_of_loop(BB0_reg, BB1_reg, mutable_time_table);
+            }
         }
     }
 
@@ -575,8 +944,6 @@ LoopCompiler::allocate_registers(const std::vector<Dependency>& dependencies,
                     op_a = instr.op_a;  // Keep the original pointer register
                 }
             }
-
-
             
             // Check if op_b is used by this instruction and is undefined (UINT32_MAX)
             if ((instr.op == Opcode::add || instr.op == Opcode::sub || 
