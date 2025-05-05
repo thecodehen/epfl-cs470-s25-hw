@@ -262,7 +262,7 @@ VLIWProgram LoopCompiler::compile() {
 /**
  * Main scheduling function - orchestrates the scheduling of all basic blocks
  */
-std::vector<uint64_t> LoopCompiler::schedule(std::vector<Dependency>& dependencies) const {
+std::vector<uint64_t> LoopCompiler::schedule(std::vector<Dependency>& dependencies) {
     // Initialize time table to map instructions to bundles
     std::vector<uint64_t> time_table(m_program.size(), UINT64_MAX);
     
@@ -296,7 +296,7 @@ std::vector<uint64_t> LoopCompiler::schedule(std::vector<Dependency>& dependenci
  * Respects functional unit constraints (each bundle has limited units)
  */
 bool LoopCompiler::insert_ASAP(uint64_t instr_id, uint64_t lowest_time, 
-                              std::vector<uint64_t>& time_table) const {
+                              std::vector<uint64_t>& time_table) {
     const auto& instr = m_program[instr_id];
     
     // Make sure we have enough bundles to consider
@@ -356,7 +356,7 @@ bool LoopCompiler::insert_ASAP(uint64_t instr_id, uint64_t lowest_time,
  * Called when no existing bundle has an appropriate functional unit available
  */
 void LoopCompiler::append(uint64_t instr_id, uint64_t lowest_time,
-                        std::vector<uint64_t>& time_table) const {
+                        std::vector<uint64_t>& time_table) {
     const auto& instr = m_program[instr_id];
     
     uint64_t bundle_idx = m_bundles.size();
@@ -383,7 +383,7 @@ void LoopCompiler::append(uint64_t instr_id, uint64_t lowest_time,
 /**
  * Schedule basic block 0 (pre-loop instructions)
  */
-std::vector<uint64_t> LoopCompiler::schedule_bb0(std::vector<uint64_t>& time_table) const {
+std::vector<uint64_t> LoopCompiler::schedule_bb0(std::vector<uint64_t>& time_table) {
     auto basic_blocks = find_basic_blocks();
     auto dependencies = find_dependencies(basic_blocks);
     
@@ -411,7 +411,7 @@ std::vector<uint64_t> LoopCompiler::schedule_bb0(std::vector<uint64_t>& time_tab
 /**
  * Schedule basic block 1 (loop body instructions)
  */
-std::vector<uint64_t> LoopCompiler::schedule_bb1(std::vector<uint64_t>& time_table) const {
+std::vector<uint64_t> LoopCompiler::schedule_bb1(std::vector<uint64_t>& time_table) {
     auto basic_blocks = find_basic_blocks();
     auto dependencies = find_dependencies(basic_blocks);
     
@@ -508,7 +508,7 @@ std::vector<uint64_t> LoopCompiler::schedule_bb1(std::vector<uint64_t>& time_tab
 /**
  * Schedule basic block 2 (post-loop instructions)
  */
-std::vector<uint64_t> LoopCompiler::schedule_bb2(std::vector<uint64_t>& time_table) const {
+std::vector<uint64_t> LoopCompiler::schedule_bb2(std::vector<uint64_t>& time_table) {
     auto basic_blocks = find_basic_blocks();
     auto dependencies = find_dependencies(basic_blocks);
     
@@ -549,7 +549,7 @@ std::vector<uint64_t> LoopCompiler::schedule_bb2(std::vector<uint64_t>& time_tab
  * Used for handling interloop dependencies
  */
 void LoopCompiler::insert_mov_at_end_of_loop(uint32_t dest_reg, uint32_t src_reg, 
-                                           std::vector<uint64_t>& time_table) const {
+                                           std::vector<uint64_t>& time_table) {
     // Determine the index for the new instruction
     uint64_t instr_id = m_program.size();
     
@@ -593,7 +593,7 @@ void LoopCompiler::insert_mov_at_end_of_loop(uint32_t dest_reg, uint32_t src_reg
  */
 std::pair<std::vector<uint32_t>, std::vector<std::pair<uint32_t, uint32_t>>> 
 LoopCompiler::allocate_registers(const std::vector<Dependency>& dependencies, 
-                                const std::vector<uint64_t>& time_table) const {
+                                const std::vector<uint64_t>& time_table) {
     size_t N = m_program.size();
     std::vector<uint32_t> new_dest(N, 0);
     std::vector<std::pair<uint32_t, uint32_t>> new_use(N, {UINT32_MAX, UINT32_MAX});

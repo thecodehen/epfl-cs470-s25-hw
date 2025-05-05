@@ -24,39 +24,39 @@ private:
      * Collection of bundles that form the schedule
      * Each bundle represents one cycle of execution
      */
-    mutable std::vector<Bundle> m_bundles;
+    std::vector<Bundle> m_bundles;
     
     /**
      * Time markers for loop execution (used in non-pipelined version too)
      * m_time_start_of_loop: First bundle of the loop body
      * m_time_end_of_loop: Last bundle of the loop body
      */
-    mutable uint64_t m_time_start_of_loop = 0;
-    mutable uint64_t m_time_end_of_loop = 0;
+    uint64_t m_time_start_of_loop = 0;
+    uint64_t m_time_end_of_loop = 0;
 
     /** 
      * Main scheduling function - schedules all basic blocks
      * Returns a vector mapping instruction IDs to their scheduled bundle IDs
      */
-    std::vector<uint64_t> schedule(std::vector<Dependency>& dependencies) const;
+    std::vector<uint64_t> schedule(std::vector<Dependency>& dependencies);
     
     /**
      * Schedule basic block 0 (pre-loop instructions)
      * Places instructions respecting local dependencies
      */
-    std::vector<uint64_t> schedule_bb0(std::vector<uint64_t>& time_table) const;
+    std::vector<uint64_t> schedule_bb0(std::vector<uint64_t>& time_table);
     
     /**
      * Schedule basic block 1 (loop body instructions)
      * Handles loop-specific dependencies
      */
-    std::vector<uint64_t> schedule_bb1(std::vector<uint64_t>& time_table) const;
+    std::vector<uint64_t> schedule_bb1(std::vector<uint64_t>& time_table);
     
     /**
      * Schedule basic block 2 (post-loop instructions)
      * Respects all dependencies including those from loop execution
      */
-    std::vector<uint64_t> schedule_bb2(std::vector<uint64_t>& time_table) const;
+    std::vector<uint64_t> schedule_bb2(std::vector<uint64_t>& time_table);
 
     /**
      * Try to insert instruction ASAP (As Soon As Possible)
@@ -68,7 +68,7 @@ private:
      * @return true if successfully inserted, false if no suitable slot found
      */
     bool insert_ASAP(uint64_t instr_id, uint64_t lowest_time, 
-                     std::vector<uint64_t>& time_table) const;
+                     std::vector<uint64_t>& time_table);
     
     /**
      * Append a new bundle with the instruction when ASAP insertion fails
@@ -78,7 +78,7 @@ private:
      * @param time_table Maps instruction IDs to bundle IDs
      */
     void append(uint64_t instr_id, uint64_t lowest_time,
-               std::vector<uint64_t>& time_table) const;
+               std::vector<uint64_t>& time_table);
                
     /**
      * Inserts a mov instruction at the end of the loop
@@ -89,7 +89,7 @@ private:
      * @param time_table Mapping of instruction IDs to bundle IDs (will be updated)
      */
     void insert_mov_at_end_of_loop(uint32_t dest_reg, uint32_t src_reg,
-                                 std::vector<uint64_t>& time_table) const;
+                                 std::vector<uint64_t>& time_table);
                                  
     /**
      * Perform register allocation (allocb algorithm)
@@ -107,7 +107,7 @@ private:
      */
     std::pair<std::vector<uint32_t>, std::vector<std::pair<uint32_t, uint32_t>>> 
     allocate_registers(const std::vector<Dependency>& dependencies, 
-                      const std::vector<uint64_t>& time_table) const;
+                      const std::vector<uint64_t>& time_table);
 };
 
 
