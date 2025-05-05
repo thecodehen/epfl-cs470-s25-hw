@@ -162,9 +162,9 @@ bool LoopPipCompiler::try_schedule(
     const uint64_t time
     ) {
     // Determine instruction type and check appropriate functional unit
-    const auto& instr = m_program.at(instr_id);
+    const auto instr = &m_program.at(instr_id);
 
-    switch (instr.op) {
+    switch (instr->op) {
     case Opcode::add:
     case Opcode::addi:
     case Opcode::sub:
@@ -175,13 +175,13 @@ bool LoopPipCompiler::try_schedule(
         // ALU operations - check ALU0 then ALU1
         if (m_bundles.at(time)[0] == nullptr) {
             // ALU0 is available
-            m_bundles.at(time)[0] = &instr;
+            m_bundles.at(time)[0] = instr;
             time_table[instr_id] = time;
             return true;
         }
         if (m_bundles.at(time)[1] == nullptr) {
             // ALU1 is available
-            m_bundles.at(time)[1] = &instr;
+            m_bundles.at(time)[1] = instr;
             time_table[instr_id] = time;
             return true;
         }
@@ -189,7 +189,7 @@ bool LoopPipCompiler::try_schedule(
     case Opcode::mulu:
         // Multiplication operation - check MUL unit
         if (m_bundles.at(time)[2] == nullptr) {
-            m_bundles.at(time)[2] = &instr;
+            m_bundles.at(time)[2] = instr;
             time_table[instr_id] = time;
             return true;
         }
@@ -198,7 +198,7 @@ bool LoopPipCompiler::try_schedule(
     case Opcode::st:
         // Memory operations - check MEM unit
         if (m_bundles.at(time)[3] == nullptr) {
-            m_bundles.at(time)[3] = &instr;
+            m_bundles.at(time)[3] = instr;
             time_table[instr_id] = time;
             return true;
         }
@@ -207,7 +207,7 @@ bool LoopPipCompiler::try_schedule(
     case Opcode::loop_pip:
         // Branch operations - check BRANCH unit
         if (m_bundles.at(time)[4] == nullptr) {
-            m_bundles.at(time)[4] = &instr;
+            m_bundles.at(time)[4] = instr;
             time_table[instr_id] = time;
             return true;
         }
@@ -269,13 +269,13 @@ bool LoopPipCompiler::try_schedule_modulo(
     const uint64_t time
     ) {
     // Determine instruction type and check appropriate functional unit
-    const auto& instr = m_program.at(instr_id);
+    const auto instr = &m_program.at(instr_id);
 
     // Make sure we are scheduling the loop block
     assert(time >= m_loop_start_time);
     const auto status_index {(time - m_loop_start_time) % m_initiation_interval};
 
-    switch (instr.op) {
+    switch (instr->op) {
     case Opcode::add:
     case Opcode::addi:
     case Opcode::sub:
@@ -286,14 +286,14 @@ bool LoopPipCompiler::try_schedule_modulo(
         // ALU operations - check ALU0 then ALU1
         if (m_bundles.at(time)[0] == nullptr && m_slot_status.at(status_index)[0] == OPEN) {
             // ALU0 is available
-            m_bundles.at(time)[0] = &instr;
+            m_bundles.at(time)[0] = instr;
             m_slot_status.at(status_index)[0] = RESERVED;
             time_table[instr_id] = time;
             return true;
         }
         if (m_bundles.at(time)[1] == nullptr && m_slot_status.at(status_index)[1] == OPEN) {
             // ALU1 is available
-            m_bundles.at(time)[1] = &instr;
+            m_bundles.at(time)[1] = instr;
             m_slot_status.at(status_index)[1] = RESERVED;
             time_table[instr_id] = time;
             return true;
@@ -302,7 +302,7 @@ bool LoopPipCompiler::try_schedule_modulo(
     case Opcode::mulu:
         // Multiplication operation - check MUL unit
         if (m_bundles.at(time)[2] == nullptr && m_slot_status.at(status_index)[2] == OPEN) {
-            m_bundles.at(time)[2] = &instr;
+            m_bundles.at(time)[2] = instr;
             m_slot_status.at(status_index)[2] = RESERVED;
             time_table[instr_id] = time;
             return true;
@@ -312,7 +312,7 @@ bool LoopPipCompiler::try_schedule_modulo(
     case Opcode::st:
         // Memory operations - check MEM unit
         if (m_bundles.at(time)[3] == nullptr && m_slot_status.at(status_index)[3] == OPEN) {
-            m_bundles.at(time)[3] = &instr;
+            m_bundles.at(time)[3] = instr;
             m_slot_status.at(status_index)[3] = RESERVED;
             time_table[instr_id] = time;
             return true;
@@ -322,7 +322,7 @@ bool LoopPipCompiler::try_schedule_modulo(
     case Opcode::loop_pip:
         // Branch operations - check BRANCH unit
         if (m_bundles.at(time)[4] == nullptr && m_slot_status.at(status_index)[4] == OPEN) {
-            m_bundles.at(time)[4] = &instr;
+            m_bundles.at(time)[4] = instr;
             m_slot_status.at(status_index)[4] = RESERVED;
             time_table[instr_id] = time;
             return true;
@@ -672,6 +672,12 @@ void LoopPipCompiler::organize_pipeline_stages() {
         // Add this bundle to the current stage
         m_pipeline_stages[stage_idx].push_back(bundle_idx);
 
+        for (const auto instr : m_bundles.at(bundle_idx)) {
+            if (instr != nullptr) {
+                m_instruction_to_stage_map[instr->id] = stage_idx;
+            }
+        }
+
         // Move to next stage after II bundles
         bundle_in_stage++;
         if (bundle_in_stage == m_initiation_interval) {
@@ -773,6 +779,28 @@ std::vector<Bundle> LoopPipCompiler::rename(
         const std::vector<Dependency>& dependencies
         ) {
     // copy the bundles
+    // auto bundles = std::vector<std::array<Instruction, 5>>{};
+    // for (const auto& bundle : m_bundles) {
+    //     std::array<Instruction, 5> new_bundle;
+    //     for (int i = 0; i < 5; ++i) {
+    //         new_bundle[i] = bundle[i] ? *bundle[i] : Instruction{Opcode::nop};
+    //     }
+    //     bundles.push_back(new_bundle);
+    // }
+
+    // std::vector<uint32_t> rotating_registers(num_non_rotating_registers);
+    // std::generate(rotating_registers.begin(), rotating_registers.end(), [i = 0]() mutable {
+    //     return num_non_rotating_registers + i++;
+    // });
+
+    if (m_loop_start_time < m_loop_end_time) {
+        rename_loop_body_dest();
+    }
+    rename_loop_invariant(dependencies);
+    rename_loop_body_consumer(dependencies, basic_blocks.at(1));
+    rename_post_loop_consumer(dependencies, basic_blocks.at(2));
+
+    // copy the bundles
     auto bundles = std::vector<std::array<Instruction, 5>>{};
     for (const auto& bundle : m_bundles) {
         std::array<Instruction, 5> new_bundle;
@@ -781,34 +809,39 @@ std::vector<Bundle> LoopPipCompiler::rename(
         }
         bundles.push_back(new_bundle);
     }
-
-    std::vector<uint32_t> rotating_registers(num_non_rotating_registers);
-    std::generate(rotating_registers.begin(), rotating_registers.end(), [i = 0]() mutable {
-        return num_non_rotating_registers + i++;
-    });
-
-    if (m_loop_start_time < m_loop_end_time) {
-        rename_loop_body_dest(bundles);
-    }
-    rename_loop_invariant(dependencies);
-
     return bundles;
 }
 
-void LoopPipCompiler::rename_loop_body_dest(
-    std::vector<Bundle>& bundles
-    ) const
+void LoopPipCompiler::rename_loop_body_dest()
 {
     const auto num_stages {m_pipeline_stages.size()};
     int32_t cur_reg {num_non_rotating_registers};
     for (auto bundle_i {m_loop_start_time}; bundle_i < m_loop_end_time; ++bundle_i) {
-        auto& bundle {bundles.at(bundle_i)};
-        for (auto& instr : bundle) {
-            if (is_producer(instr.op)) {
-                instr.new_dest = cur_reg;
+        auto& bundle {m_bundles.at(bundle_i)};
+        for (const auto instr : bundle) {
+            if (instr != nullptr && is_producer(instr->op)) {
+                instr->new_dest = cur_reg;
                 cur_reg += num_stages + 1;
             }
         }
+    }
+}
+
+void LoopPipCompiler::rename_consumer_operands(
+    const uint32_t old_dest,
+    const uint32_t new_dest,
+    Instruction& instr
+    )
+{
+    if (instr.op_a == old_dest) {
+        instr.op_a = new_dest;
+    }
+    if (instr.op_b == old_dest) {
+        instr.op_b = new_dest;
+    }
+    // special handling for st because dest can be a consumer
+    if (instr.op == Opcode::st && instr.dest == old_dest) {
+        instr.dest = new_dest;
     }
 }
 
@@ -840,22 +873,12 @@ void LoopPipCompiler::rename_loop_invariant(
     }
 
     // rename the consumer instructions
-    for (auto i {0}; i < dependencies.size(); ++i) {
+    for (auto i {0}; i < m_program.size(); ++i) {
         auto& instr {m_program.at(i)};
         for (const auto producer_id : dependencies.at(i).loop_invariant) {
             const auto& producer_old_dest {m_program.at(producer_id).dest};
 
-            // only op_a and op_b can be a consumer
-            if (instr.op_a == producer_old_dest) {
-               instr.op_a = new_dest[producer_old_dest];
-            }
-            if (instr.op_b == producer_old_dest) {
-                instr.op_b = new_dest[producer_old_dest];
-            }
-            // special handling for st because dest can be a consumer
-            if (instr.op == Opcode::st && instr.dest == producer_old_dest) {
-                instr.dest = new_dest[producer_old_dest];
-            }
+            rename_consumer_operands(producer_old_dest, new_dest[producer_old_dest], instr);
         }
     }
 
@@ -865,5 +888,62 @@ void LoopPipCompiler::rename_loop_invariant(
 
         // rename the dest register
         instr.new_dest = new_dest[instr.dest];
+    }
+}
+
+void LoopPipCompiler::rename_loop_body_consumer(
+    const std::vector<Dependency>& dependencies,
+    const Block& bb1
+    )
+{
+    for (auto instr_id {bb1.first}; instr_id < bb1.second; ++instr_id) {
+        auto& instr {m_program.at(instr_id)};
+        auto& dependency {dependencies.at(instr_id)};
+
+        // adjust consumer registers for local dependencies
+        for (auto dep : dependency.local) {
+            const auto adjustment {m_instruction_to_stage_map.at(instr_id) - m_instruction_to_stage_map.at(dep)};
+            const auto& instr_producer {m_program.at(dep)};
+            rename_consumer_operands(instr_producer.dest, instr_producer.new_dest + adjustment, instr);
+        }
+
+        // adjust consumer registers for interloop dependencies
+        assert(dependency.interloop.size() <= 2);
+        if (dependency.interloop.size() == 2) {
+            assert(dependency.interloop.at(0) <= dependency.interloop.at(1));
+        }
+        if (dependency.interloop.size() >= 1) {
+            // resolve dependency from BB1
+            const auto dep_bb1 {dependency.interloop.at(1)};
+            const auto bb1_adjustment {m_instruction_to_stage_map.at(instr_id) - m_instruction_to_stage_map.at(dep_bb1) + 1};
+            const auto& bb1_producer {m_program.at(dep_bb1)};
+            rename_consumer_operands(bb1_producer.dest, bb1_producer.new_dest + bb1_adjustment, instr);
+            if (dependency.interloop.size() == 2) {
+                // resolve dependency from BB0
+                const auto dep_bb0 {dependency.interloop.at(0)};
+                const auto bb0_adjustment {-m_instruction_to_stage_map.at(dep_bb1) + 1};
+                auto& bb0_producer {m_program.at(dep_bb0)};
+                bb0_producer.new_dest = bb1_producer.new_dest + bb0_adjustment;
+            }
+        }
+    }
+}
+
+void LoopPipCompiler::rename_post_loop_consumer(
+    const std::vector<Dependency>& dependencies,
+    const Block& bb2
+    )
+{
+    for (auto instr_id {bb2.first}; instr_id < bb2.second; ++instr_id) {
+        auto& instr {m_program.at(instr_id)};
+        auto& dependency {dependencies.at(instr_id)};
+
+        // adjust consumer registers for post_loop dependencies
+        for (auto dep : dependency.post_loop) {
+            // the instruction is considered to be in the last stage
+            const auto adjustment {(m_pipeline_stages.size() - 1) - m_instruction_to_stage_map.at(dep)};
+            const auto& instr_producer {m_program.at(dep)};
+            rename_consumer_operands(instr_producer.dest, instr_producer.new_dest + adjustment, instr);
+        }
     }
 }

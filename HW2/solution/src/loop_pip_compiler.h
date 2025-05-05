@@ -6,7 +6,7 @@
 #include <array>
 #include <vector>
 
-using BundlePtr = std::array<const Instruction*, 5>;
+using BundlePtr = std::array<Instruction*, 5>;
 using Bundle = std::array<Instruction, 5>;
 
 class LoopPipCompiler : public Compiler {
@@ -49,6 +49,11 @@ private:
      * Used to track which bundles belong to which stages
      */
     std::vector<std::vector<uint64_t>> m_pipeline_stages;
+
+    /**
+     * Maps each instruction to its corresponding pipeline stage
+     */
+    std::unordered_map<uint64_t, uint64_t> m_instruction_to_stage_map;
     
     /**
      * Tracks which instructions need predication and with which predicate register
@@ -250,9 +255,25 @@ private:
         const std::vector<Dependency>& dependencies
     );
 
-    void rename_loop_body_dest(
-        std::vector<std::array<Instruction, 5>>& bundles
-        ) const;
+    /**
+     * Allocate a new register for each instruction in the loop body that writes
+     * a new value.
+     */
+    void rename_loop_body_dest();
+
+    /**
+     * Checks if instr consumes the old_dest register and renames it to
+     * new_dest.
+     *
+     * @param old_dest the register to check if it is consumed in instr
+     * @param new_dest the new register to rename the old_dest to
+     * @param instr
+     */
+    static void rename_consumer_operands(
+        uint32_t old_dest,
+        uint32_t new_dest,
+        Instruction& instr
+    );
 
     /**
      * Renames registers in the program based on the loop invariant
@@ -264,6 +285,28 @@ private:
      */
     void rename_loop_invariant(
         const std::vector<Dependency>& dependencies
+    );
+
+    /**
+     * Renames the consumer instruction in the loop body.
+     *
+     * @param dependencies
+     * @param bb1
+     */
+    void rename_loop_body_consumer(
+        const std::vector<Dependency>& dependencies,
+        const Block& bb1
+    );
+
+    /**
+     * Renames the consumer instruction in the post-loop instructions.
+     *
+     * @param dependencies
+     * @param bb2
+     */
+    void rename_post_loop_consumer(
+        const std::vector<Dependency>& dependencies,
+        const Block& bb2
     );
 };
 
