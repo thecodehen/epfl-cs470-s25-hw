@@ -379,35 +379,39 @@ std::vector<uint64_t> LoopCompiler::schedule_bb1(std::vector<uint64_t>& time_tab
     // Handle the last instruction (loop or loop.pip)
     uint64_t loop_ins_idx = basic_blocks[1].second - 1;
     
-    // Store loop start address in the instruction
+    // Store loop start address in the instruction (where to jump back to)
     Instruction& loop_instr = const_cast<Instruction&>(m_program[loop_ins_idx]);
     loop_instr.imm = lowest_time_start_loop;
     
-    // Calculate time needed after loop to satisfy all dependencies
-    uint64_t time_need_after_loop = 0;
-    
-    // Check for any interloop dependencies that need to be considered
+    // First find the latest scheduled instruction in the loop body
+    uint64_t latest_instr_time = 0;
     for (uint64_t i = basic_blocks[1].first; i < basic_blocks[1].second - 1; ++i) {
-        for (uint64_t dep_id : dependencies[i].interloop) {
-            // Only consider loop body dependencies
-            if (dep_id >= basic_blocks[1].first && dep_id < basic_blocks[1].second) {
-                uint64_t latency = (m_program[dep_id].op == Opcode::mulu) ? 3 : 1;
-                
-                // Time calculation
-                uint64_t tmp_time_afterward = (m_bundles.size() - time_table[dep_id]);
-                uint64_t tmp_time_before = (time_table[i] - lowest_time_start_loop);
-                int64_t tmp_time_need = latency - tmp_time_afterward - tmp_time_before;
-                
-                time_need_after_loop = std::max(time_need_after_loop, 
-                                           tmp_time_need > 0 ? (uint64_t)tmp_time_need : 0);
-            }
+        if (time_table[i] != UINT64_MAX) {
+            // Account for instruction latency
+            uint64_t latency = (m_program[i].op == Opcode::mulu) ? 3 : 1;
+            latest_instr_time = std::max(latest_instr_time, time_table[i] + latency - 1);
         }
     }
     
-    // Schedule the loop instruction
-    uint64_t loop_time = lowest_time_start_loop + time_need_after_loop;
-    if (!insert_ASAP(loop_ins_idx, loop_time, time_table)) {
-        append(loop_ins_idx, loop_time, time_table);
+    // Important: For the loop to work correctly, the loop instruction must come
+    // after all other instructions in the loop body
+    
+    // Find the latest bundle that contains any loop body instruction
+    uint64_t last_bundle_idx = 0;
+    for (uint64_t i = basic_blocks[1].first; i < basic_blocks[1].second - 1; ++i) {
+        if (time_table[i] != UINT64_MAX) {
+            last_bundle_idx = std::max(last_bundle_idx, time_table[i]);
+        }
+    }
+    
+    // If there's an empty branch slot in the last bundle, use it
+    // Otherwise, create a new bundle for the loop instruction
+    if (last_bundle_idx < m_bundles.size() && m_bundles[last_bundle_idx][4] == -1) {
+        m_bundles[last_bundle_idx][4] = loop_ins_idx;
+        time_table[loop_ins_idx] = last_bundle_idx;
+    } else {
+        // Create a new bundle just for the loop instruction
+        append(loop_ins_idx, latest_instr_time, time_table);
     }
     
     // Set loop end time
