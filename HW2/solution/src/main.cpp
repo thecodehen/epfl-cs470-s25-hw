@@ -67,6 +67,7 @@ int main(int argc, char *argv[]) {
     LoopCompiler loop_compiler{v};
     VLIWProgram loop_program = loop_compiler.compile();
     write_json(output_loop_file, loop_program.to_json());
+    loop_program.print();
 
     LoopPipCompiler loop_pip_compiler{v};
     VLIWProgram loop_pip_program = loop_pip_compiler.compile();
