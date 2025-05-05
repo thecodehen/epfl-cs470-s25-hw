@@ -467,7 +467,8 @@ LoopCompiler::allocate_registers(const std::vector<Dependency>& dependencies,
     std::vector<uint32_t> new_dest(N, 0);
     std::vector<std::pair<uint32_t, uint32_t>> new_use(N, {UINT32_MAX, UINT32_MAX});
     uint32_t next_reg = 1;  // Start from register x1
-    
+    std::unordered_map<uint32_t, uint32_t> livein_pointer_renaming;
+
     // Phase 1: Assign fresh destination registers in BUNDLE order (execution order)
     for (const auto& bundle : m_bundles) {
         for (int fu = 0; fu < 5; ++fu) {
@@ -541,7 +542,7 @@ LoopCompiler::allocate_registers(const std::vector<Dependency>& dependencies,
             dep_idx++;
         }
     }
-    
+
     // Phase 4: Fix undefined register reads
     // Process in BUNDLE order to match Python reference implementation
     for (const auto& bundle : m_bundles) {
@@ -560,14 +561,18 @@ LoopCompiler::allocate_registers(const std::vector<Dependency>& dependencies,
                 op_a = next_reg++;
             }
             
-            // Special case for store address (op_a)
-            // For store instructions, only rename the address register if it has already
-            // been linked to a producer in Phase 2. If it's still UINT32_MAX, that means
-            // it's a live-in value with no producer and should use the original register.
-            if (instr.op == Opcode::st && op_a == UINT32_MAX) {
-                // For live-in values, use the original register number
-                op_a = instr.op_a;
+            if ((instr.op == Opcode::ld || instr.op == Opcode::st) && op_a == UINT32_MAX) {
+                bool has_dep = !dependencies[id].local.empty() || !dependencies[id].loop_invariant.empty()
+                            || !dependencies[id].post_loop.empty() || !dependencies[id].interloop.empty();
+
+                if (has_dep) {
+                    op_a = next_reg++;  // Rename only if there's a dependency on the pointer
+                } else {
+                    op_a = instr.op_a;  // Keep the original pointer register
+                }
             }
+
+
             
             // Check if op_b is used by this instruction and is undefined (UINT32_MAX)
             if ((instr.op == Opcode::add || instr.op == Opcode::sub || 
