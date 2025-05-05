@@ -840,22 +840,18 @@ std::vector<Bundle> LoopPipCompiler::rename(
     //     bundles.push_back(new_bundle);
     // }
 
-    // std::vector<uint32_t> rotating_registers(num_non_rotating_registers);
-    // std::generate(rotating_registers.begin(), rotating_registers.end(), [i = 0]() mutable {
-    //     return num_non_rotating_registers + i++;
-    // });
-
-    if (m_loop_start_time < m_loop_end_time) {
+    const bool has_loop {basic_blocks.size() > 1};
+    if (has_loop) {
         rename_loop_body_dest();
     }
     rename_loop_invariant(dependencies);
     // only rename BB1 and BB2 if needed
-    if (basic_blocks.size() > 1) {
+    if (has_loop) {
         rename_loop_body_consumer(dependencies, basic_blocks.at(1));
         rename_post_loop_consumer(dependencies, basic_blocks.at(2));
     }
     rename_non_loop(dependencies, basic_blocks.at(0));
-    if (basic_blocks.size() > 1) {
+    if (has_loop) {
         rename_non_loop(dependencies, basic_blocks.at(2));
     }
     rename_not_written_registers();
@@ -1020,9 +1016,13 @@ void LoopPipCompiler::rename_non_loop(
     for (auto& bundle : m_bundles) {
         for (const auto instr : bundle) {
             if (instr != nullptr &&
+                // instr is in the block
                 bb.first <= instr->id &&
                 instr->id < bb.second &&
+                // instr is a producer and dest is not renamed
                 is_producer(instr->op) &&
+                instr->new_dest == -1 &&
+                // dest is not the special register
                 instr->dest != lc_id
                 ) {
                 m_allocated_registers.at(m_next_non_rotating_reg) = true;
