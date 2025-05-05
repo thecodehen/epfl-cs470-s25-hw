@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <iostream>
-#include <set>
 
 /**
  * Main compilation method that implements software pipelining
@@ -345,16 +344,12 @@ void LoopPipCompiler::schedule_loop_body(
     const Block& bb1,
     const std::vector<Dependency>& dependencies
     ) {
-    // TODO: should set this to something that can handle dependencies
-    // If BB1 is empty, just set markers and return
-    if (bb1.first >= bb1.second) {
-        m_loop_start_time = m_bundles.size();
-        m_loop_end_time = m_bundles.size();
-        return;
-    }
-
     // Calculate lowest possible time to start the loop based on dependencies
-    const auto lowest_start_time = calculate_loop_start_time(dependencies, bb1, time_table);
+    const auto lowest_start_time = calculate_loop_start_time(
+        time_table,
+        dependencies,
+        bb1
+    );
     m_loop_start_time = lowest_start_time;
 
     // Remember current bundle size in case we need to retry
@@ -400,15 +395,14 @@ void LoopPipCompiler::schedule_loop_body(
             // }
 
             // schedule the loop at the end of stage 0
+            const auto loop_instr_bundle_id = m_loop_start_time + m_initiation_interval - 1;
+            if (m_bundles.size() <= loop_instr_bundle_id) {
+                m_bundles.resize(loop_instr_bundle_id + 1);
+            }
             m_bundles.at(m_loop_start_time + m_initiation_interval - 1)[4] = &m_program.at(loop_instr_idx);
 
             // Check if all interloop dependencies are satisfied
-            // Collect all instruction IDs in the loop body
-            std::vector<uint64_t> loop_instructions;
-            for (uint64_t i = bb1.first; i < bb1.second; ++i) {
-                loop_instructions.push_back(i);
-            }
-            if (verify_pipeline_dependencies(time_table, loop_instructions)) {
+            if (verify_pipeline_dependencies(time_table, dependencies, bb1)) {
                 // Valid schedule found
                 break;
             }
@@ -432,24 +426,25 @@ void LoopPipCompiler::schedule_loop_body(
 /**
  * Calculate the earliest possible start time for the loop based on dependencies
  */
-uint64_t LoopPipCompiler::calculate_loop_start_time(const std::vector<Dependency>& dependencies,
-                                                 const Block& loop_block,
-                                                 const std::vector<uint64_t>& time_table) {
-    // TODO: Have this handle even not having a loop
+uint64_t LoopPipCompiler::calculate_loop_start_time(
+        const std::vector<uint64_t>& time_table,
+        const std::vector<Dependency>& dependencies,
+        const Block& loop_block
+        ) {
     uint64_t lowest_time = m_bundles.size();
 
     // Process loop instructions except the last one (loop instruction)
-    for (uint64_t i = loop_block.first; i < loop_block.second - 1; ++i) {
+    for (auto i {loop_block.first}; i < loop_block.second - 1; ++i) {
         // Check loop invariant dependencies
-        for (uint64_t dep_id : dependencies[i].loop_invariant) {
-            uint64_t latency = (m_program[dep_id].op == Opcode::mulu) ? 3 : 1;
+        for (const auto dep_id : dependencies[i].loop_invariant) {
+            const auto latency = (m_program[dep_id].op == Opcode::mulu) ? 3 : 1;
             lowest_time = std::max(lowest_time, time_table[dep_id] + latency);
         }
 
         // Check interloop dependencies from BB0
-        for (uint64_t dep_id : dependencies[i].interloop) {
+        for (const auto dep_id : dependencies[i].interloop) {
             if (dep_id < loop_block.first) {  // Only consider BB0 dependencies here
-                uint64_t latency = (m_program[dep_id].op == Opcode::mulu) ? 3 : 1;
+                const auto latency = (m_program[dep_id].op == Opcode::mulu) ? 3 : 1;
                 lowest_time = std::max(lowest_time, time_table[dep_id] + latency);
             }
         }
@@ -568,9 +563,7 @@ bool LoopPipCompiler::schedule_asap_modulo(
     const uint64_t earliest_time)
 {
     // Make sure we have enough bundles to consider
-    while (m_bundles.size() <= earliest_time) {
-        m_bundles.push_back({nullptr, nullptr, nullptr, nullptr, nullptr});
-    }
+    m_bundles.resize(earliest_time + 1);
 
     // Try each bundle starting from the earliest possible time
     for (auto time {earliest_time}; check_slot_available(instr_id); ++time) {
@@ -579,7 +572,7 @@ bool LoopPipCompiler::schedule_asap_modulo(
         }
 
         // no suitable slot found in existing bundle, need to create a new bundle
-        m_bundles.push_back({nullptr, nullptr, nullptr, nullptr, nullptr});
+        m_bundles.push_back({});
     }
 
     return false;
@@ -617,23 +610,23 @@ void LoopPipCompiler::update_resource_reservations() {
  * Checks if all interloop dependencies are satisfied with current II
  * Verifies the equation: S(P) + λ(P) ≤ S(C) + II
  */
-bool LoopPipCompiler::verify_pipeline_dependencies(const std::vector<uint64_t>& time_table,
-                                               const std::vector<uint64_t>& loop_instructions) {
-    auto basic_blocks = find_basic_blocks();
-    auto dependencies = find_dependencies(basic_blocks);
-
+bool LoopPipCompiler::verify_pipeline_dependencies(
+    const std::vector<uint64_t>& time_table,
+    const std::vector<Dependency>& dependencies,
+    const Block& bb1
+    ) {
     // Check each instruction in the loop
-    for (uint64_t instr_id : loop_instructions) {
+    for (auto instr_id {bb1.first}; instr_id < bb1.second; ++instr_id) {
         // Check all interloop dependencies
-        for (uint64_t dep_id : dependencies[instr_id].interloop) {
+        for (const auto dep_id : dependencies.at(instr_id).interloop) {
             // Only consider dependencies within the loop body
-            if (std::find(loop_instructions.begin(), loop_instructions.end(), dep_id) != loop_instructions.end()) {
+            if (bb1.first <= dep_id && dep_id < bb1.second) {
                 // Get scheduled times
-                uint64_t producer_time = time_table[dep_id];
-                uint64_t consumer_time = time_table[instr_id];
+                const auto producer_time = time_table[dep_id];
+                const auto consumer_time = time_table[instr_id];
 
                 // Get latency
-                uint64_t latency = (m_program[dep_id].op == Opcode::mulu) ? 3 : 1;
+                const auto latency = (m_program[dep_id].op == Opcode::mulu) ? 3 : 1;
 
                 // Verify the equation: S(P) + λ(P) ≤ S(C) + II
                 if (producer_time + latency > consumer_time + m_initiation_interval) {
@@ -834,16 +827,6 @@ std::vector<Bundle> LoopPipCompiler::rename(
         const std::vector<Block>& basic_blocks,
         const std::vector<Dependency>& dependencies
         ) {
-    // copy the bundles
-    // auto bundles = std::vector<std::array<Instruction, 5>>{};
-    // for (const auto& bundle : m_bundles) {
-    //     std::array<Instruction, 5> new_bundle;
-    //     for (int i = 0; i < 5; ++i) {
-    //         new_bundle[i] = bundle[i] ? *bundle[i] : Instruction{Opcode::nop};
-    //     }
-    //     bundles.push_back(new_bundle);
-    // }
-
     const bool has_loop {basic_blocks.size() > 1};
     if (has_loop) {
         rename_loop_body_dest();

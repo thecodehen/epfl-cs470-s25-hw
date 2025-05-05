@@ -165,10 +165,12 @@ private:
     /**
      * Calculate the earliest possible start time for the loop based on dependencies
      */
-    uint64_t calculate_loop_start_time(const std::vector<Dependency>& dependencies, 
-                                     const Block& loop_block,
-                                     const std::vector<uint64_t>& time_table);
-    
+    uint64_t calculate_loop_start_time(
+        const std::vector<uint64_t>& time_table,
+        const std::vector<Dependency>& dependencies,
+        const Block& loop_block
+    );
+
     /**
      * Calculate the earliest possible time for an instruction based on all its dependencies
      */
@@ -223,11 +225,12 @@ private:
      * Verifies the equation: S(P) + λ(P) ≤ S(C) + II
      * 
      * @param time_table Time table mapping instructions to bundles
-     * @param loop_instructions Loop body instructions
      * @return true if all dependencies are satisfied, false otherwise
      */
-    bool verify_pipeline_dependencies(const std::vector<uint64_t>& time_table, 
-                                    const std::vector<uint64_t>& loop_instructions);
+    bool verify_pipeline_dependencies(
+        const std::vector<uint64_t>& time_table,
+        const std::vector<Dependency>& dependencies,
+        const Block& bb1);
     
     /**
      * Organizes loop bundles into pipeline stages
