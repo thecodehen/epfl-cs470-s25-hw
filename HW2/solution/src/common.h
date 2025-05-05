@@ -165,7 +165,11 @@ public:
             break;
         case Opcode::movp:
             s += "p" + std::to_string(print_dest) + ", ";
-            s += std::to_string(imm);
+            if (imm) {
+                s += "true";
+            } else {
+                s += "false";
+            }
             break;
         }
         return s;
