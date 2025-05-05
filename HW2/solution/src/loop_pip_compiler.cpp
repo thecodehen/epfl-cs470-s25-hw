@@ -45,23 +45,6 @@ VLIWProgram LoopPipCompiler::compile() {
         program.mem_instructions.push_back(bundle[3]);
         program.branch_instructions.push_back(bundle[4]);
     }
-    /*
-    for (const auto& bundle : bundles) {
-        // For each functional unit slot, use the assigned instruction or nop if empty
-        Instruction alu0 = bundle[0] ? *bundle[0] : Instruction{Opcode::nop};
-        Instruction alu1 = bundle[1] ? *bundle[1] : Instruction{Opcode::nop};
-        Instruction mult = bundle[2] ? *bundle[2] : Instruction{Opcode::nop};
-        Instruction mem = bundle[3] ? *bundle[3] : Instruction{Opcode::nop};
-        Instruction branch = bundle[4] ? *bundle[4] : Instruction{Opcode::nop};
-
-        // Add instructions to the final program
-        program.alu0_instructions.push_back(alu0);
-        program.alu1_instructions.push_back(alu1);
-        program.mult_instructions.push_back(mult);
-        program.mem_instructions.push_back(mem);
-        program.branch_instructions.push_back(branch);
-    }
-    */
 
     return program;
 }
@@ -87,7 +70,6 @@ std::vector<uint64_t> LoopPipCompiler::schedule(
 
     // Then schedule the loop body (BB1) with pipelining
     if (basic_blocks.size() > 1) {
-        m_loop_start_time = m_bundles.size(); // Mark start of loop
         schedule_loop_body(time_table, basic_blocks.at(1), dependencies);
         m_loop_end_time = m_bundles.size(); // Mark end of loop
 
@@ -99,6 +81,26 @@ std::vector<uint64_t> LoopPipCompiler::schedule(
         // Organize the pipeline stages
         organize_pipeline_stages();
     }
+
+    /*
+    std::cout << "m_loop_start_time: " << m_loop_start_time << std::endl;
+    std::cout << "m_loop_end_time: " << m_loop_end_time << std::endl;
+    std::cout << "m_initiation_interval: " << m_initiation_interval << std::endl;
+    // Create the final VLIW program
+    VLIWProgram program;
+
+    // For each bundle, create a VLIW instruction with all functional units
+    for (const auto bundle : m_bundles) {
+        program.alu0_instructions.push_back(bundle[0] ? *bundle[0] : Instruction{Opcode::nop});
+        program.alu1_instructions.push_back(bundle[1] ? *bundle[1] : Instruction{Opcode::nop});
+        program.mult_instructions.push_back(bundle[2] ? *bundle[2] : Instruction{Opcode::nop});
+        program.mem_instructions.push_back(bundle[3] ? *bundle[3] : Instruction{Opcode::nop});
+        program.branch_instructions.push_back(bundle[4] ? *bundle[4] : Instruction{Opcode::nop});
+    }
+
+    program.print();
+    std::cout << std::endl;
+    */
 
     return time_table;
 }
@@ -343,6 +345,7 @@ void LoopPipCompiler::schedule_loop_body(
     const Block& bb1,
     const std::vector<Dependency>& dependencies
     ) {
+    // TODO: should set this to something that can handle dependencies
     // If BB1 is empty, just set markers and return
     if (bb1.first >= bb1.second) {
         m_loop_start_time = m_bundles.size();
@@ -350,14 +353,9 @@ void LoopPipCompiler::schedule_loop_body(
         return;
     }
 
-    // Collect all instruction IDs in the loop body
-    std::vector<uint64_t> loop_instructions;
-    for (uint64_t i = bb1.first; i < bb1.second; ++i) {
-        loop_instructions.push_back(i);
-    }
-
     // Calculate lowest possible time to start the loop based on dependencies
-    uint64_t lowest_start_time = calculate_loop_start_time(dependencies, bb1, time_table);
+    const auto lowest_start_time = calculate_loop_start_time(dependencies, bb1, time_table);
+    m_loop_start_time = lowest_start_time;
 
     // Remember current bundle size in case we need to retry
     const auto saved_bundle_size = m_bundles.size();
@@ -403,12 +401,17 @@ void LoopPipCompiler::schedule_loop_body(
 
             // schedule the loop at the end of stage 0
             m_bundles.at(m_loop_start_time + m_initiation_interval - 1)[4] = &m_program.at(loop_instr_idx);
-        }
 
-        // Check if all interloop dependencies are satisfied
-        if (success && verify_pipeline_dependencies(time_table, loop_instructions)) {
-            // Valid schedule found
-            break;
+            // Check if all interloop dependencies are satisfied
+            // Collect all instruction IDs in the loop body
+            std::vector<uint64_t> loop_instructions;
+            for (uint64_t i = bb1.first; i < bb1.second; ++i) {
+                loop_instructions.push_back(i);
+            }
+            if (verify_pipeline_dependencies(time_table, loop_instructions)) {
+                // Valid schedule found
+                break;
+            }
         }
 
         // Increase II and try again
@@ -432,6 +435,7 @@ void LoopPipCompiler::schedule_loop_body(
 uint64_t LoopPipCompiler::calculate_loop_start_time(const std::vector<Dependency>& dependencies,
                                                  const Block& loop_block,
                                                  const std::vector<uint64_t>& time_table) {
+    // TODO: Have this handle even not having a loop
     uint64_t lowest_time = m_bundles.size();
 
     // Process loop instructions except the last one (loop instruction)
