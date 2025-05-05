@@ -141,7 +141,9 @@ void LoopPipCompiler::schedule_asap(
     const uint64_t lowest_time
     ) {
     // Make sure we have enough bundles to consider
-    m_bundles.resize(lowest_time + 1);
+    if (m_bundles.size() <= lowest_time) {
+        m_bundles.resize(lowest_time + 1);
+    }
 
     // Try each bundle starting from the lowest possible time
     for (auto i_bundle {lowest_time}; i_bundle < m_bundles.size(); ++i_bundle) {
@@ -397,7 +399,7 @@ void LoopPipCompiler::schedule_loop_body(
             if (m_bundles.size() <= loop_instr_bundle_id) {
                 m_bundles.resize(loop_instr_bundle_id + 1);
             }
-            m_bundles.at(m_loop_start_time + m_initiation_interval - 1)[4] = &m_program.at(loop_instr_idx);
+            m_bundles.at(loop_instr_bundle_id)[4] = &m_program.at(loop_instr_idx);
 
             // Check if all interloop dependencies are satisfied
             if (verify_pipeline_dependencies(time_table, dependencies, bb1)) {
@@ -561,7 +563,9 @@ bool LoopPipCompiler::schedule_asap_modulo(
     const uint64_t earliest_time)
 {
     // Make sure we have enough bundles to consider
-    m_bundles.resize(earliest_time + 1);
+    if (m_bundles.size() <= earliest_time) {
+        m_bundles.resize(earliest_time + 1);
+    }
 
     // Try each bundle starting from the earliest possible time
     for (auto time {earliest_time}; check_slot_available(instr_id); ++time) {
@@ -952,24 +956,24 @@ void LoopPipCompiler::rename_loop_body_consumer(
         }
 
         // adjust consumer registers for interloop dependencies
-        assert(dependency.interloop.size() <= 2);
-        if (dependency.interloop.size() == 2) {
-            assert(dependency.interloop.at(0) <= dependency.interloop.at(1));
-        }
-        if (dependency.interloop.size() >= 1) {
-            // resolve dependency from BB1, since the dependencies are sorted
-            // for interloop.size() == 1, interloop.back() just gets the
-            // instruction in the loop
-            const auto dep_bb1 {dependency.interloop.back()};
-            const auto bb1_adjustment {m_instruction_to_stage_map.at(instr_id) - m_instruction_to_stage_map.at(dep_bb1) + 1};
-            const auto& bb1_producer {m_program.at(dep_bb1)};
-            rename_consumer_operands(bb1_producer.dest, bb1_producer.new_dest + bb1_adjustment, instr);
-            if (dependency.interloop.size() == 2) {
-                // resolve dependency from BB0
-                const auto dep_bb0 {dependency.interloop.front()};
-                const auto bb0_adjustment {-m_instruction_to_stage_map.at(dep_bb1) + 1};
-                auto& bb0_producer {m_program.at(dep_bb0)};
-                bb0_producer.new_dest = bb1_producer.new_dest + bb0_adjustment;
+        for (const auto dep : dependency.interloop) {
+            if (bb1.first <= dep && dep < bb1.second) {
+                // dep from bb1
+                const auto bb1_adjustment {m_instruction_to_stage_map.at(instr_id) - m_instruction_to_stage_map.at(dep) + 1};
+                const auto& bb1_producer {m_program.at(dep)};
+                rename_consumer_operands(bb1_producer.dest, bb1_producer.new_dest + bb1_adjustment, instr);
+
+                // see if this dependency has another producer in BB0
+                const auto dep_bb0 = std::find_if(dependency.interloop.begin(), dependency.interloop.end(), [&](const auto& d) {
+                    const auto& bb0_producer {m_program.at(d)};
+                    return d < bb1.first && bb0_producer.dest == bb1_producer.dest;
+                });
+                if (dep_bb0 != dependency.interloop.end()) {
+                    // resolve dependency from BB0
+                    const auto bb0_adjustment {-m_instruction_to_stage_map.at(dep) + 1};
+                    auto& bb0_producer {m_program.at(*dep_bb0)};
+                    bb0_producer.new_dest = bb1_producer.new_dest + bb0_adjustment;
+                }
             }
         }
     }
