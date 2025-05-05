@@ -854,6 +854,11 @@ std::vector<Bundle> LoopPipCompiler::rename(
         rename_loop_body_consumer(dependencies, basic_blocks.at(1));
         rename_post_loop_consumer(dependencies, basic_blocks.at(2));
     }
+    rename_non_loop(dependencies, basic_blocks.at(0));
+    if (basic_blocks.size() > 1) {
+        rename_non_loop(dependencies, basic_blocks.at(2));
+    }
+    rename_not_written_registers();
 
     // copy the bundles
     auto bundles = std::vector<std::array<Instruction, 5>>{};
@@ -890,13 +895,16 @@ void LoopPipCompiler::rename_consumer_operands(
 {
     if (instr.op_a == old_dest) {
         instr.op_a = new_dest;
+        instr.has_op_a_been_renamed = true;
     }
     if (instr.op_b == old_dest) {
         instr.op_b = new_dest;
+        instr.has_op_b_been_renamed = true;
     }
     // special handling for st because dest can be a consumer
     if (instr.op == Opcode::st && instr.dest == old_dest) {
         instr.dest = new_dest;
+        instr.has_dest_been_renamed = true;
     }
 }
 
@@ -921,10 +929,10 @@ void LoopPipCompiler::rename_loop_invariant(
 
     // new_dest maps the old register id to the new register id
     std::unordered_map<uint32_t, uint32_t> new_dest;
-    auto cur_reg {1};
     for (const auto id : id_to_be_renamed) {
         const auto& producer {m_program.at(id)};
-        new_dest[producer.dest] = cur_reg++;
+        m_allocated_registers[m_next_non_rotating_reg] = true;
+        new_dest[producer.dest] = m_next_non_rotating_reg++;
     }
 
     // rename the consumer instructions
@@ -1001,6 +1009,84 @@ void LoopPipCompiler::rename_post_loop_consumer(
             const auto adjustment {(m_pipeline_stages.size() - 1) - m_instruction_to_stage_map.at(dep)};
             const auto& instr_producer {m_program.at(dep)};
             rename_consumer_operands(instr_producer.dest, instr_producer.new_dest + adjustment, instr);
+        }
+    }
+}
+
+void LoopPipCompiler::rename_non_loop(
+    const std::vector<Dependency>& dependencies,
+    const Block& bb
+) {
+    for (auto& bundle : m_bundles) {
+        for (const auto instr : bundle) {
+            if (instr != nullptr &&
+                bb.first <= instr->id &&
+                instr->id < bb.second &&
+                is_producer(instr->op) &&
+                instr->dest != lc_id
+                ) {
+                m_allocated_registers.at(m_next_non_rotating_reg) = true;
+                instr->new_dest = m_next_non_rotating_reg++;
+            }
+        }
+    }
+    // fix local dependencies
+    for (auto& bundle : m_bundles) {
+        for (const auto instr : bundle) {
+            if (instr != nullptr &&
+                bb.first <= instr->id &&
+                instr->id < bb.second
+                ) {
+                auto& dependency {dependencies.at(instr->id)};
+                for (const auto dep : dependency.local) {
+                    const auto& producer {m_program.at(dep)};
+                    rename_consumer_operands(producer.dest, producer.new_dest, *instr);
+                }
+            }
+        }
+    }
+}
+
+void LoopPipCompiler::rename_not_written_registers()
+{
+    for (auto& bundle : m_bundles) {
+        for (const auto instr : bundle) {
+            if (instr != nullptr) {
+                switch (instr->op) {
+                case Opcode::add:
+                case Opcode::sub:
+                case Opcode::mulu:
+                    if (!instr->has_op_a_been_renamed) {
+                        instr->has_op_a_been_renamed = true;
+                        instr->op_a = m_next_non_rotating_reg++;
+                    }
+                    if (!instr->has_op_b_been_renamed) {
+                        instr->has_op_b_been_renamed = true;
+                        instr->op_b = m_next_non_rotating_reg++;
+                    }
+                    break;
+                case Opcode::addi:
+                case Opcode::ld:
+                case Opcode::movr:
+                    if (!instr->has_op_a_been_renamed) {
+                        instr->has_op_a_been_renamed = true;
+                        instr->op_a = m_next_non_rotating_reg++;
+                    }
+                    break;
+                case Opcode::st:
+                    if (!instr->has_dest_been_renamed) {
+                        instr->has_dest_been_renamed = true;
+                        instr->dest = m_next_non_rotating_reg++;
+                    }
+                    if (!instr->has_op_a_been_renamed) {
+                        instr->has_op_a_been_renamed = true;
+                        instr->op_a = m_next_non_rotating_reg++;
+                    }
+                    break;
+                default:
+                    break;
+                }
+            }
         }
     }
 }

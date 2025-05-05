@@ -62,13 +62,15 @@ public:
     // op_a stores source in mov
     uint32_t op_a;
     uint32_t op_b;
+    bool has_op_a_been_renamed {};
+    bool has_op_b_been_renamed {};
+    bool has_dest_been_renamed {};
     // imm also stores loopStart, true=1/false=0
     int64_t imm;
     uint64_t id;
     // pred is the register that will determine whether the instruction is
     // executed in a stage for loop.pip
     int32_t pred {-1};
-    bool has_been_renamed {};
     std::string to_string() const {
         std::string s;
 

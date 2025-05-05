@@ -75,6 +75,9 @@ private:
      */
     uint64_t m_initiation_interval {};
 
+    uint32_t m_next_non_rotating_reg {1};
+    std::array<bool, num_registers> m_allocated_registers {};
+
     /**
      * Main scheduling function for pipelined execution
      * Implements modulo scheduling with resource reservation
@@ -308,6 +311,10 @@ private:
         const std::vector<Dependency>& dependencies,
         const Block& bb2
     );
+
+    void rename_non_loop(const std::vector<Dependency>& dependencies, const Block& bb);
+
+    void rename_not_written_registers();
 };
 
 #endif //LOOP_PIP_COMPILER_H
