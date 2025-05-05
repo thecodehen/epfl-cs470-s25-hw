@@ -555,9 +555,18 @@ LoopCompiler::allocate_registers(const std::vector<Dependency>& dependencies,
             // Check if op_a is used by this instruction and is undefined (UINT32_MAX)
             if ((instr.op == Opcode::add || instr.op == Opcode::sub || 
                  instr.op == Opcode::mulu || instr.op == Opcode::addi || 
-                 instr.op == Opcode::ld || instr.op == Opcode::st) && 
+                 instr.op == Opcode::ld) && 
                 op_a == UINT32_MAX) {
                 op_a = next_reg++;
+            }
+            
+            // Special case for store address (op_a)
+            // For store instructions, only rename the address register if it has already
+            // been linked to a producer in Phase 2. If it's still UINT32_MAX, that means
+            // it's a live-in value with no producer and should use the original register.
+            if (instr.op == Opcode::st && op_a == UINT32_MAX) {
+                // For live-in values, use the original register number
+                op_a = instr.op_a;
             }
             
             // Check if op_b is used by this instruction and is undefined (UINT32_MAX)
