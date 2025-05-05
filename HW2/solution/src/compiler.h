@@ -41,6 +41,8 @@ protected:
 
     static bool is_producer(Opcode opcode);
 
+    static void remove_duplicate_dependencies(std::vector<Dependency>& dependencies);
+
     Program m_program;
 private:
     /**

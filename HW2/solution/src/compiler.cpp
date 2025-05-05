@@ -146,6 +146,24 @@ void Compiler::update_producers(
     }
 }
 
+void Compiler::remove_duplicate_dependencies(std::vector<Dependency>& dependencies)
+{
+    // remove duplicate dependencies
+    for (auto& dep : dependencies) {
+        std::sort(dep.local.begin(), dep.local.end());
+        dep.local.erase(std::unique(dep.local.begin(), dep.local.end()), dep.local.end());
+
+        std::sort(dep.interloop.begin(), dep.interloop.end());
+        dep.interloop.erase(std::unique(dep.interloop.begin(), dep.interloop.end()), dep.interloop.end());
+
+        std::sort(dep.loop_invariant.begin(), dep.loop_invariant.end());
+        dep.loop_invariant.erase(std::unique(dep.loop_invariant.begin(), dep.loop_invariant.end()), dep.loop_invariant.end());
+
+        std::sort(dep.post_loop.begin(), dep.post_loop.end());
+        dep.post_loop.erase(std::unique(dep.post_loop.begin(), dep.post_loop.end()), dep.post_loop.end());
+    }
+}
+
 std::vector<Dependency> Compiler::find_dependencies(std::vector<Block> blocks) const {
     // dependency vector for each instruction
     std::vector<Dependency> result(m_program.size());
@@ -179,6 +197,7 @@ std::vector<Dependency> Compiler::find_dependencies(std::vector<Block> blocks) c
 
     // if there is only one basic block, there are no other dependencies
     if (blocks.size() == 1) {
+        remove_duplicate_dependencies(result);
         return result;
     }
 
@@ -269,20 +288,6 @@ std::vector<Dependency> Compiler::find_dependencies(std::vector<Block> blocks) c
         );
     }
 
-    // remove duplicate dependencies
-    for (auto& dep : result) {
-        std::sort(dep.local.begin(), dep.local.end());
-        dep.local.erase(std::unique(dep.local.begin(), dep.local.end()), dep.local.end());
-
-        std::sort(dep.interloop.begin(), dep.interloop.end());
-        dep.interloop.erase(std::unique(dep.interloop.begin(), dep.interloop.end()), dep.interloop.end());
-
-        std::sort(dep.loop_invariant.begin(), dep.loop_invariant.end());
-        dep.loop_invariant.erase(std::unique(dep.loop_invariant.begin(), dep.loop_invariant.end()), dep.loop_invariant.end());
-
-        std::sort(dep.post_loop.begin(), dep.post_loop.end());
-        dep.post_loop.erase(std::unique(dep.post_loop.begin(), dep.post_loop.end()), dep.post_loop.end());
-    }
-
+    remove_duplicate_dependencies(result);
     return result;
 }
