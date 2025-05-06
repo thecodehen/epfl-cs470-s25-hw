@@ -1,3 +1,5 @@
 build
 hw2.zip
 __pycache__
+given_tests/*/simple.json
+given_tests/*/pip.json
