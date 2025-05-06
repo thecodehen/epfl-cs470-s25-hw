@@ -1,0 +1,4 @@
+[
+    [ "mov LC, 100", "nop", "nop", "nop", "nop" ],
+    [ "nop", "nop", "nop", "nop", "loop 1" ]
+]
