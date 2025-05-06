@@ -178,15 +178,7 @@ private:
                                               const std::vector<Dependency>& dependencies,
                                               const std::vector<uint64_t>& time_table,
                                               uint64_t loop_start_time);
-    
-    /**
-     * Calculate additional time needed after the loop to handle interloop dependencies
-     */
-    uint64_t calculate_time_after_loop(const std::vector<Dependency>& dependencies,
-                                     const std::vector<uint64_t>& loop_instructions,
-                                     const std::vector<uint64_t>& time_table,
-                                     uint64_t loop_start_time);
-    
+
     /**
      * Attempts to insert an instruction with modulo scheduling
      * Reserves slots in other iterations according to the II
@@ -202,24 +194,7 @@ private:
         uint64_t earliest_time
         );
     
-    /**
-     * Appends a new bundle with modulo scheduling support
-     * Used when insertion fails
-     * Also handles resource reservation
-     * 
-     * @param instr_id ID of the instruction to insert
-     * @param earliest_time Earliest possible bundle based on dependencies
-     * @param time_table Mapping of instruction IDs to bundle IDs
-     */
-    void create_new_bundle_with_reservations(uint64_t instr_id, uint64_t earliest_time,
-                                            std::vector<uint64_t>& time_table);
-    
-    /**
-     * Propagates resource reservations when adding new bundles
-     * Ensures that reserved slots maintain consistency across the schedule
-     */
-    void update_resource_reservations();
-    
+
     /**
      * Checks if all interloop dependencies are satisfied with current II
      * Verifies the equation: S(P) + λ(P) ≤ S(C) + II

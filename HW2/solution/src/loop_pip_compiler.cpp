@@ -476,40 +476,6 @@ uint64_t LoopPipCompiler::calculate_instruction_earliest_time(uint64_t instr_id,
 }
 
 /**
- * Calculate additional time needed after the loop to handle interloop dependencies
- */
-uint64_t LoopPipCompiler::calculate_time_after_loop(const std::vector<Dependency>& dependencies,
-                                                 const std::vector<uint64_t>& loop_instructions,
-                                                 const std::vector<uint64_t>& time_table,
-                                                 uint64_t loop_start_time) {
-    uint64_t time_needed = 0;
-
-    // Check all interloop dependencies within the loop body
-    for (uint64_t i : loop_instructions) {
-        for (uint64_t dep_id : dependencies[i].interloop) {
-            // Only consider dependencies within the loop body
-            if (std::find(loop_instructions.begin(), loop_instructions.end(), dep_id) != loop_instructions.end()) {
-                uint64_t latency = (m_program[dep_id].op == Opcode::mulu) ? 3 : 1;
-
-                // Calculate time from loop dependency to end of loop
-                uint64_t time_after = m_bundles.size() - time_table[dep_id];
-
-                // Time from start of loop to the consuming instruction
-                uint64_t time_before = time_table[i] - loop_start_time;
-
-                // Time needed is latency - time_after - time_before
-                int64_t needed = latency - time_after - time_before;
-                if (needed > 0) {
-                    time_needed = std::max(time_needed, static_cast<uint64_t>(needed));
-                }
-            }
-        }
-    }
-
-    return time_needed;
-}
-
-/**
  * Schedules the post-loop code
  * Similar to non-pipelined version but respects pipeline dependencies
  */
@@ -578,34 +544,6 @@ bool LoopPipCompiler::schedule_asap_modulo(
     }
 
     return false;
-}
-
-/**
- * Propagates resource reservations when adding new bundles
- * Ensures that reserved slots maintain consistency across the schedule
- */
-void LoopPipCompiler::update_resource_reservations() {
-    // Get the index of the newly added bundle
-    uint64_t new_bundle_idx = m_bundles.size() - 1;
-
-    // For each bundle in the loop
-    for (uint64_t bundle_idx = m_loop_start_time; bundle_idx < new_bundle_idx; ++bundle_idx) {
-        // If the new bundle is at II-distance from the current bundle
-        if ((new_bundle_idx - bundle_idx) % m_initiation_interval == 0) {
-            // Check each slot
-            for (int slot_idx = 0; slot_idx < 5; ++slot_idx) {
-                // If a slot in the existing bundle is occupied, reserve it in the new bundle
-                if (m_bundles[bundle_idx][slot_idx] != nullptr) {
-                    m_slot_status[new_bundle_idx][slot_idx] = RESERVED;
-                }
-
-                // If a slot in the new bundle is occupied, reserve it in the existing bundle
-                if (m_bundles[new_bundle_idx][slot_idx] != nullptr) {
-                    m_slot_status[bundle_idx][slot_idx] = RESERVED;
-                }
-            }
-        }
-    }
 }
 
 /**
