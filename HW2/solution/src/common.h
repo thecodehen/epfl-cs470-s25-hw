@@ -151,7 +151,7 @@ public:
             break;
         case Opcode::movr:
             s += "x" + std::to_string(print_dest) + ", ";
-            s += "p" + std::to_string(op_a);
+            s += "x" + std::to_string(op_a);  // This should be "x" not "p" for register to register moves
             break;
         case Opcode::movi:
             if (dest == lc_id) {
