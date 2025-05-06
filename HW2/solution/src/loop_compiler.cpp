@@ -305,6 +305,7 @@ std::vector<uint64_t> LoopCompiler::schedule(std::vector<Dependency>& dependenci
     }
 
 
+    /*
     std::cout << "m_loop_start_time: " << m_time_start_of_loop << std::endl;
     std::cout << "m_loop_end_time: " << m_time_end_of_loop << std::endl;
     // Create the final VLIW program
@@ -321,6 +322,7 @@ std::vector<uint64_t> LoopCompiler::schedule(std::vector<Dependency>& dependenci
 
     program.print();
     std::cout << std::endl;
+    */
 
 
     return time_table;
