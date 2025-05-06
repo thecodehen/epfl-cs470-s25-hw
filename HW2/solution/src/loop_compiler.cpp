@@ -625,6 +625,8 @@ void LoopCompiler::insert_mov_end_of_loop(
         m_bundles.at(m_time_end_of_loop).at(4) = loop_instr_id;
     }
 
+    assert(m_time_end_of_loop - 1 >= lowest_time);
+
     // make sure we have enough bundles
     for (auto cur_time {lowest_time}; ; ++cur_time) {
         if (m_bundles.at(cur_time).at(0) == -1) {
@@ -635,11 +637,11 @@ void LoopCompiler::insert_mov_end_of_loop(
             m_bundles.at(cur_time).at(1) = instr_id;
             return;
         }
-        // we need to add a bundle because all bundles are full at cur_time
-        m_bundles.insert(m_bundles.begin() + cur_time + 1, Bundle{-1, -1, -1, -1, -1});
+        // if both slots are full, and we are at the end of the loop
         if (cur_time == m_time_end_of_loop - 1) {
             // we are trying to schedule something at the end of the loop, so
             // we need to move the loop instruction to the new bundle
+            m_bundles.insert(m_bundles.begin() + m_time_end_of_loop, Bundle{-1, -1, -1, -1, -1});
             m_bundles.at(cur_time).at(4) = -1;
             m_bundles.at(cur_time + 1).at(4) = loop_instr_id;
             ++m_time_end_of_loop;
