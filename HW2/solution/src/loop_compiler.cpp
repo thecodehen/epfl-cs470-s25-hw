@@ -304,7 +304,7 @@ std::vector<uint64_t> LoopCompiler::schedule(std::vector<Dependency>& dependenci
         }
     }
 
-    /*
+
     std::cout << "m_loop_start_time: " << m_time_start_of_loop << std::endl;
     std::cout << "m_loop_end_time: " << m_time_end_of_loop << std::endl;
     // Create the final VLIW program
@@ -321,7 +321,7 @@ std::vector<uint64_t> LoopCompiler::schedule(std::vector<Dependency>& dependenci
 
     program.print();
     std::cout << std::endl;
-    */
+
 
     return time_table;
 }
@@ -537,12 +537,12 @@ std::vector<uint64_t> LoopCompiler::schedule_bb1(std::vector<uint64_t>& time_tab
     
     // If there's an empty branch slot in the last bundle, use it
     // Otherwise, create a new bundle for the loop instruction
-    if (last_bundle_idx < m_bundles.size() && m_bundles[last_bundle_idx][4] == -1) {
+    if (latest_instr_time <= last_bundle_idx && last_bundle_idx < m_bundles.size() && m_bundles[last_bundle_idx][4] == -1) {
         m_bundles[last_bundle_idx][4] = loop_ins_idx;
         time_table[loop_ins_idx] = last_bundle_idx;
     } else {
         // Create a new bundle just for the loop instruction
-        append(loop_ins_idx, latest_instr_time, time_table);
+        insert_ASAP(loop_ins_idx, latest_instr_time, time_table);
     }
     
     // Set loop end time
