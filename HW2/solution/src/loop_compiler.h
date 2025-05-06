@@ -34,6 +34,8 @@ private:
     uint64_t m_time_start_of_loop = 0;
     uint64_t m_time_end_of_loop = 0;
 
+    uint32_t m_next_non_rotating_reg {1};
+
     /** 
      * Main scheduling function - schedules all basic blocks
      * Returns a vector mapping instruction IDs to their scheduled bundle IDs
@@ -79,7 +81,23 @@ private:
      */
     void append(uint64_t instr_id, uint64_t lowest_time,
                std::vector<uint64_t>& time_table);
-               
+
+    void rename_consumer_operands(
+        const uint32_t old_dest,
+        const uint32_t new_dest,
+        Instruction& instr
+    );
+
+    void insert_mov_end_of_loop(
+        const uint32_t instr_id,
+        const uint64_t lowest_time);
+
+    void rename(
+        const std::vector<Block>& basic_blocks,
+        const std::vector<Dependency>& dependencies,
+        const std::vector<uint64_t>& time_table
+    );
+
     /**
      * Inserts a mov instruction at the end of the loop
      * Used for handling interloop dependencies

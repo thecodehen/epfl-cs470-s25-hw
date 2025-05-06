@@ -1,13 +1,13 @@
 #include "loop_compiler.h"
-
 #include <algorithm>
+#include <bits/regex_constants.h>
 #include <bitset>
 #include <iomanip>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
-#include <memory>
 
 VLIWProgram LoopCompiler::compile() {
     auto basic_blocks = find_basic_blocks();
@@ -77,7 +77,25 @@ VLIWProgram LoopCompiler::compile() {
 
     // Schedule instructions (main scheduling algorithm)
     auto time_table = schedule(dependencies);
-    
+
+    /* Uncomment to use alternative renaming algorithm
+    rename(basic_blocks, dependencies, time_table);
+
+    // Create VLIWProgram from bundles
+    VLIWProgram program;
+
+    // For each bundle, create a VLIW instruction with all functional units
+    for (const auto bundle : m_bundles) {
+        program.alu0_instructions.push_back(bundle[0] != -1 ?   m_program.at(bundle[0]) : Instruction{Opcode::nop});
+        program.alu1_instructions.push_back(bundle[1] != -1 ?   m_program.at(bundle[1]) : Instruction{Opcode::nop});
+        program.mult_instructions.push_back(bundle[2] != -1 ?   m_program.at(bundle[2]) : Instruction{Opcode::nop});
+        program.mem_instructions.push_back(bundle[3] != -1 ?    m_program.at(bundle[3]) : Instruction{Opcode::nop});
+        program.branch_instructions.push_back(bundle[4] != -1 ? m_program.at(bundle[4]) : Instruction{Opcode::nop});
+    }
+
+    return program;
+    */
+
     // Perform register allocation (allocb algorithm) - do this only ONCE
     auto [new_dest, new_use] = allocate_registers(dependencies, time_table);
     
@@ -287,7 +305,26 @@ std::vector<uint64_t> LoopCompiler::schedule(std::vector<Dependency>& dependenci
             schedule_bb2(time_table);
         }
     }
-    
+
+    /*
+    std::cout << "m_loop_start_time: " << m_time_start_of_loop << std::endl;
+    std::cout << "m_loop_end_time: " << m_time_end_of_loop << std::endl;
+    // Create the final VLIW program
+    VLIWProgram program;
+
+    // For each bundle, create a VLIW instruction with all functional units
+    for (const auto bundle : m_bundles) {
+        program.alu0_instructions.push_back(bundle[0] != -1 ?   m_program.at(bundle[0]) : Instruction{Opcode::nop});
+        program.alu1_instructions.push_back(bundle[1] != -1 ?   m_program.at(bundle[1]) : Instruction{Opcode::nop});
+        program.mult_instructions.push_back(bundle[2] != -1 ?   m_program.at(bundle[2]) : Instruction{Opcode::nop});
+        program.mem_instructions.push_back(bundle[3] != -1 ?    m_program.at(bundle[3]) : Instruction{Opcode::nop});
+        program.branch_instructions.push_back(bundle[4] != -1 ? m_program.at(bundle[4]) : Instruction{Opcode::nop});
+    }
+
+    program.print();
+    std::cout << std::endl;
+    */
+
     return time_table;
 }
 
@@ -542,6 +579,213 @@ std::vector<uint64_t> LoopCompiler::schedule_bb2(std::vector<uint64_t>& time_tab
     }
     
     return time_table;
+}
+
+void LoopCompiler::rename_consumer_operands(
+    const uint32_t old_dest,
+    const uint32_t new_dest,
+    Instruction& instr
+    )
+{
+    if (instr.op_a == old_dest) {
+        instr.op_a = new_dest;
+        instr.has_op_a_been_renamed = true;
+    }
+    if (instr.op_b == old_dest) {
+        instr.op_b = new_dest;
+        instr.has_op_b_been_renamed = true;
+    }
+    // special handling for st because dest can be a consumer
+    if (instr.op == Opcode::st && instr.dest == old_dest) {
+        instr.dest = new_dest;
+        instr.has_dest_been_renamed = true;
+    }
+}
+
+void LoopCompiler::insert_mov_end_of_loop(
+    const uint32_t instr_id,
+    const uint64_t lowest_time
+) {
+    // TODO: Finish this function
+    const auto loop_instr_id = m_bundles.at(m_time_end_of_loop - 1).at(4);
+    auto cur_time = m_time_end_of_loop - 1;
+
+    while (cur_time < lowest_time) {
+        m_bundles.at(cur_time).at(4) = -1;
+        m_bundles.insert(m_bundles.begin() + cur_time + 1, Bundle{-1, -1, -1, -1, -1});
+        m_bundles.at(cur_time + 1).at(4) = loop_instr_id;
+        ++cur_time;
+    }
+
+    // make sure we have enough bundles
+    while (true) {
+        if (m_bundles.at(cur_time).at(0) == -1) {
+            m_bundles.at(cur_time).at(0) = instr_id;
+            return;
+        }
+        if (m_bundles.at(cur_time).at(1) == -1) {
+            m_bundles.at(cur_time).at(1) = instr_id;
+            return;
+        }
+        m_bundles.at(cur_time).at(4) = -1;
+        m_bundles.insert(m_bundles.begin() + cur_time + 1, Bundle{-1, -1, -1, -1, -1});
+        m_bundles.at(cur_time + 1).at(4) = loop_instr_id;
+        ++cur_time;
+    }
+}
+
+void LoopCompiler::rename(
+    const std::vector<Block>& basic_blocks,
+    const std::vector<Dependency>& dependencies,
+    const std::vector<uint64_t>& time_table
+) {
+    // phase 1
+    for (auto& bundle : m_bundles) {
+        for (const auto instr_id : bundle) {
+            if (instr_id != -1) {
+                auto& instr = m_program.at(instr_id);
+                if (is_producer(instr.op) && instr.dest != lc_id && instr.dest != ec_id) {
+                    instr.new_dest = m_next_non_rotating_reg++;
+                }
+            }
+        }
+    }
+
+    // phase 2
+    for (auto instr_id {0}; instr_id < m_program.size(); ++instr_id) {
+        auto& instr = m_program.at(instr_id);
+        auto& dependency = dependencies.at(instr_id);
+
+        for (const auto dep : dependency.local) {
+            const auto& instr_producer = m_program.at(dep);
+            rename_consumer_operands(
+                instr_producer.dest,
+                instr_producer.new_dest,
+                instr
+            );
+        }
+
+        for (const auto dep : dependency.post_loop) {
+            const auto& instr_producer = m_program.at(dep);
+            rename_consumer_operands(
+                instr_producer.dest,
+                instr_producer.new_dest,
+                instr
+            );
+        }
+
+        for (const auto dep : dependency.loop_invariant) {
+            const auto& instr_producer = m_program.at(dep);
+            rename_consumer_operands(
+                instr_producer.dest,
+                instr_producer.new_dest,
+                instr
+            );
+        }
+    }
+
+    // first is dst, second is src
+    std::vector<std::pair<uint64_t, uint64_t>> additional_mov_instr;
+    if (basic_blocks.size() > 1) {
+        const auto& bb1 = basic_blocks.at(1);
+
+        // fix interloop dependencies
+        for (auto instr_id {0}; instr_id < m_program.size(); ++instr_id) {
+            auto& instr = m_program.at(instr_id);
+            auto& dependency = dependencies.at(instr_id);
+
+            for (auto dep : dependency.interloop) {
+                if (bb1.first <= dep && dep < bb1.second) {
+                    auto& bb1_producer = m_program.at(dep);
+
+                    // see if this dependency has another producer in BB0
+                    const auto dep_bb0 = std::find_if(dependency.interloop.begin(), dependency.interloop.end(), [&](const auto& d) {
+                        const auto& bb0_producer {m_program.at(d)};
+                        return d < bb1.first && bb0_producer.dest == bb1_producer.dest;
+                    });
+
+                    if (dep_bb0 != dependency.interloop.end()) {
+                        // there is a bb0 producer
+                        auto& bb0_producer = m_program.at(*dep_bb0);
+                        rename_consumer_operands(
+                            bb0_producer.dest,
+                            bb0_producer.new_dest,
+                            instr
+                        );
+                        additional_mov_instr.emplace_back(*dep_bb0, dep);
+                    } else {
+                        // there is only a bb1 producer
+                        rename_consumer_operands(
+                            bb1_producer.dest,
+                            bb1_producer.new_dest,
+                            instr
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // phase 3
+    for (auto& p : additional_mov_instr) {
+        const auto bb0_producer_id = p.first;
+        const auto bb1_producer_id = p.second;
+        m_program.push_back(Instruction{
+            .op = Opcode::movr,
+            .dest = static_cast<uint32_t>(m_program.at(bb0_producer_id).new_dest),
+            .op_a = static_cast<uint32_t>(m_program.at(bb0_producer_id).new_dest),
+        });
+
+        const auto cur_instr_id = m_program.size() - 1;
+
+        const auto latency = m_program.at(bb1_producer_id).op == Opcode::mulu ? 3 : 1;
+        const auto lowest_time = std::max(m_time_end_of_loop - 1, time_table.at(bb1_producer_id) + latency);
+        insert_mov_end_of_loop(cur_instr_id, lowest_time);
+    }
+
+    // phase 4
+    for (auto& bundle : m_bundles) {
+        for (const auto instr_id : bundle) {
+            if (instr_id != -1) {
+                auto& instr = m_program.at(instr_id);
+
+                switch (instr.op) {
+                case Opcode::add:
+                case Opcode::sub:
+                case Opcode::mulu:
+                    if (!instr.has_op_a_been_renamed) {
+                        instr.has_op_a_been_renamed = true;
+                        instr.op_a = m_next_non_rotating_reg++;
+                    }
+                    if (!instr.has_op_b_been_renamed) {
+                        instr.has_op_b_been_renamed = true;
+                        instr.op_b = m_next_non_rotating_reg++;
+                    }
+                    break;
+                case Opcode::addi:
+                case Opcode::ld:
+                case Opcode::movr:
+                    if (!instr.has_op_a_been_renamed) {
+                        instr.has_op_a_been_renamed = true;
+                        instr.op_a = m_next_non_rotating_reg++;
+                    }
+                    break;
+                case Opcode::st:
+                    if (!instr.has_dest_been_renamed) {
+                        instr.has_dest_been_renamed = true;
+                        instr.dest = m_next_non_rotating_reg++;
+                    }
+                    if (!instr.has_op_a_been_renamed) {
+                        instr.has_op_a_been_renamed = true;
+                        instr.op_a = m_next_non_rotating_reg++;
+                    }
+                    break;
+                default:
+                    break;
+                }
+            }
+        }
+    }
 }
 
 /**
