@@ -88,6 +88,12 @@ private:
         Instruction& instr
     );
 
+    /**
+     * Inserts a mov instruction at the end of the loop. Maintains
+     *  m_time_end_of_loop` to keep pointing to the end of the loop.
+     * @param instr_id
+     * @param lowest_time
+     */
     void insert_mov_end_of_loop(
         const uint32_t instr_id,
         const uint64_t lowest_time);

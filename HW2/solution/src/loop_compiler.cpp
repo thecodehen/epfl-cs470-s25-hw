@@ -1,10 +1,7 @@
 #include "loop_compiler.h"
 #include <algorithm>
-#include <bits/regex_constants.h>
-#include <bitset>
 #include <iomanip>
 #include <iostream>
-#include <memory>
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -78,7 +75,7 @@ VLIWProgram LoopCompiler::compile() {
     // Schedule instructions (main scheduling algorithm)
     auto time_table = schedule(dependencies);
 
-    /* Uncomment to use alternative renaming algorithm
+    // Uncomment to use alternative renaming algorithm
     rename(basic_blocks, dependencies, time_table);
 
     // Create VLIWProgram from bundles
@@ -94,8 +91,8 @@ VLIWProgram LoopCompiler::compile() {
     }
 
     return program;
-    */
 
+    /*
     // Perform register allocation (allocb algorithm) - do this only ONCE
     auto [new_dest, new_use] = allocate_registers(dependencies, time_table);
     
@@ -275,6 +272,7 @@ VLIWProgram LoopCompiler::compile() {
 
     
     return program;
+    */
 }
 
 /**
@@ -606,19 +604,18 @@ void LoopCompiler::insert_mov_end_of_loop(
     const uint32_t instr_id,
     const uint64_t lowest_time
 ) {
-    // TODO: Finish this function
+    std::cout << "Inserting: " << m_program.at(instr_id).to_string() << " from " << lowest_time << std::endl;
     const auto loop_instr_id = m_bundles.at(m_time_end_of_loop - 1).at(4);
-    auto cur_time = m_time_end_of_loop - 1;
 
-    while (cur_time < lowest_time) {
-        m_bundles.at(cur_time).at(4) = -1;
-        m_bundles.insert(m_bundles.begin() + cur_time + 1, Bundle{-1, -1, -1, -1, -1});
-        m_bundles.at(cur_time + 1).at(4) = loop_instr_id;
-        ++cur_time;
+    // move the loop instruction enough so that we can schedule at lowest_time
+    for (; m_time_end_of_loop - 1 < lowest_time; ++m_time_end_of_loop) {
+        m_bundles.at(m_time_end_of_loop - 1).at(4) = -1;
+        m_bundles.insert(m_bundles.begin() + m_time_end_of_loop, Bundle{-1, -1, -1, -1, -1});
+        m_bundles.at(m_time_end_of_loop).at(4) = loop_instr_id;
     }
 
     // make sure we have enough bundles
-    while (true) {
+    for (auto cur_time {lowest_time}; ; ++cur_time) {
         if (m_bundles.at(cur_time).at(0) == -1) {
             m_bundles.at(cur_time).at(0) = instr_id;
             return;
@@ -627,10 +624,15 @@ void LoopCompiler::insert_mov_end_of_loop(
             m_bundles.at(cur_time).at(1) = instr_id;
             return;
         }
-        m_bundles.at(cur_time).at(4) = -1;
+        // we need to add a bundle because all bundles are full at cur_time
         m_bundles.insert(m_bundles.begin() + cur_time + 1, Bundle{-1, -1, -1, -1, -1});
-        m_bundles.at(cur_time + 1).at(4) = loop_instr_id;
-        ++cur_time;
+        if (cur_time == m_time_end_of_loop - 1) {
+            // we are trying to schedule something at the end of the loop, so
+            // we need to move the loop instruction to the new bundle
+            m_bundles.at(cur_time).at(4) = -1;
+            m_bundles.at(cur_time + 1).at(4) = loop_instr_id;
+            ++m_time_end_of_loop;
+        }
     }
 }
 
@@ -712,7 +714,10 @@ void LoopCompiler::rename(
                             bb0_producer.new_dest,
                             instr
                         );
-                        additional_mov_instr.emplace_back(*dep_bb0, dep);
+                        // only append the mov instruction if we need to
+                        if (std::find(additional_mov_instr.begin(), additional_mov_instr.end(), std::make_pair(*dep_bb0, dep)) == additional_mov_instr.end()) {
+                            additional_mov_instr.emplace_back(*dep_bb0, dep);
+                        }
                     } else {
                         // there is only a bb1 producer
                         rename_consumer_operands(
@@ -727,19 +732,23 @@ void LoopCompiler::rename(
     }
 
     // phase 3
+    const auto time_end_of_loop_before_phase_3 {m_time_end_of_loop};
     for (auto& p : additional_mov_instr) {
         const auto bb0_producer_id = p.first;
         const auto bb1_producer_id = p.second;
         m_program.push_back(Instruction{
             .op = Opcode::movr,
             .dest = static_cast<uint32_t>(m_program.at(bb0_producer_id).new_dest),
-            .op_a = static_cast<uint32_t>(m_program.at(bb0_producer_id).new_dest),
+            .op_a = static_cast<uint32_t>(m_program.at(bb1_producer_id).new_dest),
+            // to prevent this operand from being renamed
+            .has_op_a_been_renamed = true,
         });
 
         const auto cur_instr_id = m_program.size() - 1;
 
         const auto latency = m_program.at(bb1_producer_id).op == Opcode::mulu ? 3 : 1;
-        const auto lowest_time = std::max(m_time_end_of_loop - 1, time_table.at(bb1_producer_id) + latency);
+        // we should only schedule the mov instructions at or after the end of the loop scheduled in phase 2
+        const auto lowest_time = std::max(time_end_of_loop_before_phase_3 - 1, time_table.at(bb1_producer_id) + latency);
         insert_mov_end_of_loop(cur_instr_id, lowest_time);
     }
 
