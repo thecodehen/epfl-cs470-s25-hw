@@ -61,26 +61,24 @@ private:
     std::vector<uint64_t> schedule_bb2(std::vector<uint64_t>& time_table);
 
     /**
-     * Try to insert instruction ASAP (As Soon As Possible)
-     * Finds the earliest bundle with an available functional unit of the right type
-     * 
-     * @param instr_id ID of the instruction to insert
-     * @param lowest_time Earliest possible bundle (based on dependencies)
-     * @param time_table Maps instruction IDs to bundle IDs
-     * @return true if successfully inserted, false if no suitable slot found
+     * schedule_asap will schedule the instruction at the earliest possible time
+     * starting from lowest_time.
      */
-    bool insert_ASAP(uint64_t instr_id, uint64_t lowest_time, 
-                     std::vector<uint64_t>& time_table);
-    
+    void schedule_asap(
+        std::vector<uint64_t>& time_table,
+        uint64_t instr_id,
+        uint64_t lowest_time
+    );
+
     /**
-     * Append a new bundle with the instruction when ASAP insertion fails
-     * 
-     * @param instr_id ID of the instruction to insert
-     * @param lowest_time Earliest possible bundle (based on dependencies)
-     * @param time_table Maps instruction IDs to bundle IDs
+     * try_schedule attempts to schedule the instruction at the specified time.
+     * If unsuccessful, return false.
      */
-    void append(uint64_t instr_id, uint64_t lowest_time,
-               std::vector<uint64_t>& time_table);
+    bool try_schedule(
+        std::vector<uint64_t>& time_table,
+        uint64_t instr_id,
+        uint64_t time
+    );
 
     void rename_consumer_operands(
         const uint32_t old_dest,
@@ -112,8 +110,10 @@ private:
      * @param src_reg The source register for the mov
      * @param time_table Mapping of instruction IDs to bundle IDs (will be updated)
      */
+    /*
     void insert_mov_at_end_of_loop(uint32_t dest_reg, uint32_t src_reg,
                                  std::vector<uint64_t>& time_table);
+    */
                                  
     /**
      * Perform register allocation (allocb algorithm)
@@ -129,9 +129,11 @@ private:
      *         1. Vector of newly allocated destination registers for each instruction
      *         2. Vector of pairs for operand registers (op_a, op_b) for each instruction
      */
+    /*
     std::pair<std::vector<uint32_t>, std::vector<std::pair<uint32_t, uint32_t>>> 
     allocate_registers(const std::vector<Dependency>& dependencies, 
                       const std::vector<uint64_t>& time_table);
+    */
 };
 
 

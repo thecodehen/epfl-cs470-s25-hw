@@ -3,8 +3,6 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
-#include <unordered_map>
-#include <unordered_set>
 
 VLIWProgram LoopCompiler::compile() {
     auto basic_blocks = find_basic_blocks();
@@ -328,93 +326,87 @@ std::vector<uint64_t> LoopCompiler::schedule(std::vector<Dependency>& dependenci
     return time_table;
 }
 
-/**
- * Attempts to find the earliest possible bundle position for an instruction
- * Respects functional unit constraints (each bundle has limited units)
- */
-bool LoopCompiler::insert_ASAP(uint64_t instr_id, uint64_t lowest_time, 
-                              std::vector<uint64_t>& time_table) {
-    const auto& instr = m_program[instr_id];
-    
+void LoopCompiler::schedule_asap(
+    std::vector<uint64_t>& time_table,
+    const uint64_t instr_id,
+    const uint64_t lowest_time
+    ) {
     // Make sure we have enough bundles to consider
-    while (m_bundles.size() <= lowest_time) {
-        m_bundles.push_back({-1, -1, -1, -1, -1});
+    if (m_bundles.size() <= lowest_time) {
+        m_bundles.resize(lowest_time + 1, {-1, -1, -1, -1, -1});
     }
-    
+
     // Try each bundle starting from the lowest possible time
-    for (uint64_t i_bundle = lowest_time; i_bundle < m_bundles.size(); ++i_bundle) {
-        // Determine instruction type and check appropriate functional unit
-        if (instr.op == Opcode::add || instr.op == Opcode::addi || 
-            instr.op == Opcode::sub || instr.op == Opcode::movi || 
-            instr.op == Opcode::movr || instr.op == Opcode::movp || 
-            instr.op == Opcode::nop) {
-            // ALU operations - check ALU0 then ALU1
-            if (m_bundles[i_bundle][0] == -1) {
-                // ALU0 is available
-                m_bundles[i_bundle][0] = instr_id;
-                time_table[instr_id] = i_bundle;
-                return true;
-            } else if (m_bundles[i_bundle][1] == -1) {
-                // ALU1 is available
-                m_bundles[i_bundle][1] = instr_id;
-                time_table[instr_id] = i_bundle;
-                return true;
-            }
-        } else if (instr.op == Opcode::mulu) {
-            // Multiplication operation - check MUL unit
-            if (m_bundles[i_bundle][2] == -1) {
-                m_bundles[i_bundle][2] = instr_id;
-                time_table[instr_id] = i_bundle;
-                return true;
-            }
-        } else if (instr.op == Opcode::ld || instr.op == Opcode::st) {
-            // Memory operations - check MEM unit
-            if (m_bundles[i_bundle][3] == -1) {
-                m_bundles[i_bundle][3] = instr_id;
-                time_table[instr_id] = i_bundle;
-                return true;
-            }
-        } else if (instr.op == Opcode::loop || instr.op == Opcode::loop_pip) {
-            // Branch operations - check BRANCH unit
-            if (m_bundles[i_bundle][4] == -1) {
-                m_bundles[i_bundle][4] = instr_id;
-                time_table[instr_id] = i_bundle;
-                return true;
-            }
+    for (auto i_bundle {lowest_time}; i_bundle < m_bundles.size(); ++i_bundle) {
+        if (try_schedule(time_table, instr_id, i_bundle)) {
+            return;
         }
     }
-    
-    // Could not find a suitable slot in existing bundles
-    return false;
+
+    // no suitable slot found in existing bundle, need to create a new bundle
+    m_bundles.push_back({-1, -1, -1, -1, -1});
+    try_schedule(time_table, instr_id, m_bundles.size() - 1);
 }
 
-/**
- * Creates a new bundle for an instruction when ASAP insertion fails
- * Called when no existing bundle has an appropriate functional unit available
- */
-void LoopCompiler::append(uint64_t instr_id, uint64_t lowest_time,
-                        std::vector<uint64_t>& time_table) {
-    const auto& instr = m_program[instr_id];
-    
-    uint64_t bundle_idx = m_bundles.size();
-    m_bundles.emplace_back(Bundle{-1, -1, -1, -1, -1});
-    
-    // Determine which functional unit to use based on instruction type
-    if (instr.op == Opcode::add || instr.op == Opcode::addi || 
-        instr.op == Opcode::sub || instr.op == Opcode::movi || 
-        instr.op == Opcode::movr || instr.op == Opcode::movp || 
-        instr.op == Opcode::nop) {
-        m_bundles[bundle_idx][0] = instr_id;  // ALU0
-    } else if (instr.op == Opcode::mulu) {
-        m_bundles[bundle_idx][2] = instr_id;  // MUL
-    } else if (instr.op == Opcode::ld || instr.op == Opcode::st) {
-        m_bundles[bundle_idx][3] = instr_id;  // MEM
-    } else if (instr.op == Opcode::loop || instr.op == Opcode::loop_pip) {
-        m_bundles[bundle_idx][4] = instr_id;  // BRANCH
+bool LoopCompiler::try_schedule(
+    std::vector<uint64_t>& time_table,
+    const uint64_t instr_id,
+    const uint64_t time
+    ) {
+    // Determine instruction type and check appropriate functional unit
+    const auto instr = &m_program.at(instr_id);
+
+    switch (instr->op) {
+    case Opcode::add:
+    case Opcode::addi:
+    case Opcode::sub:
+    case Opcode::movi:
+    case Opcode::movr:
+    case Opcode::movp:
+    case Opcode::nop:
+        // ALU operations - check ALU0 then ALU1
+        if (m_bundles.at(time)[0] == -1) {
+            // ALU0 is available
+            m_bundles.at(time)[0] = instr_id;
+            time_table[instr_id] = time;
+            return true;
+        }
+        if (m_bundles.at(time)[1] == -1) {
+            // ALU1 is available
+            m_bundles.at(time)[1] = instr_id;
+            time_table[instr_id] = time;
+            return true;
+        }
+        break;
+    case Opcode::mulu:
+        // Multiplication operation - check MUL unit
+        if (m_bundles.at(time)[2] == -1) {
+            m_bundles.at(time)[2] = instr_id;
+            time_table[instr_id] = time;
+            return true;
+        }
+        break;
+    case Opcode::ld:
+    case Opcode::st:
+        // Memory operations - check MEM unit
+        if (m_bundles.at(time)[3] == -1) {
+            m_bundles.at(time)[3] = instr_id;
+            time_table[instr_id] = time;
+            return true;
+        }
+        break;
+    case Opcode::loop:
+    case Opcode::loop_pip:
+        // Branch operations - check BRANCH unit
+        if (m_bundles.at(time)[4] == -1) {
+            m_bundles.at(time)[4] = instr_id;
+            time_table[instr_id] = time;
+            return true;
+        }
+        break;
     }
-    
-    // Update time table with the bundle assignment
-    time_table[instr_id] = bundle_idx;
+
+    return false;
 }
 
 /**
@@ -437,9 +429,7 @@ std::vector<uint64_t> LoopCompiler::schedule_bb0(std::vector<uint64_t>& time_tab
         }
         
         // Try to insert ASAP, if not possible, append a new bundle
-        if (!insert_ASAP(i, lowest_time, time_table)) {
-            append(i, lowest_time, time_table);
-        }
+        schedule_asap(time_table, i, lowest_time);
     }
     
     return time_table;
@@ -458,15 +448,10 @@ std::vector<uint64_t> LoopCompiler::schedule_bb1(std::vector<uint64_t>& time_tab
         
         // For empty loops, we still need to schedule the loop instruction
         uint64_t loop_ins_idx = basic_blocks[1].second - 1;
-        
-        // Store loop start address in the instruction (where to jump back to)
-        Instruction& loop_instr = const_cast<Instruction&>(m_program[loop_ins_idx]);
-        loop_instr.imm = m_bundles.size();
-        
-        // Create a separate bundle for the loop instruction
-        append(loop_ins_idx, m_bundles.size(), time_table);
-        
-        m_time_end_of_loop = m_bundles.size();
+        schedule_asap(time_table, loop_ins_idx, m_time_start_of_loop);
+        m_program.at(loop_ins_idx).imm = m_time_start_of_loop;
+
+        m_time_end_of_loop = m_time_start_of_loop + 1;
         return time_table;
     }
     
@@ -504,19 +489,16 @@ std::vector<uint64_t> LoopCompiler::schedule_bb1(std::vector<uint64_t>& time_tab
         }
         
         // Try to insert ASAP, if not possible, append a new bundle
-        if (!insert_ASAP(i, lowest_time, time_table)) {
-            append(i, lowest_time, time_table);
-        }
+        schedule_asap(time_table, i, lowest_time);
     }
     
     // Handle the last instruction (loop or loop.pip)
     uint64_t loop_ins_idx = basic_blocks[1].second - 1;
     
     // Store loop start address in the instruction (where to jump back to)
-    Instruction& loop_instr = const_cast<Instruction&>(m_program[loop_ins_idx]);
-    loop_instr.imm = lowest_time_start_loop;
-    
-    // First find the latest scheduled instruction in the loop body
+    m_program.at(loop_ins_idx).imm = lowest_time_start_loop;
+
+    // First find the time we can schedule the loop instruction
     uint64_t latest_instr_time = 0;
     for (uint64_t i = basic_blocks[1].first; i < basic_blocks[1].second - 1; ++i) {
         if (time_table[i] != UINT64_MAX) {
@@ -525,28 +507,9 @@ std::vector<uint64_t> LoopCompiler::schedule_bb1(std::vector<uint64_t>& time_tab
             latest_instr_time = std::max(latest_instr_time, time_table[i] + latency - 1);
         }
     }
-    
-    // Important: For the loop to work correctly, the loop instruction must come
-    // after all other instructions in the loop body
-    
-    // Find the latest bundle that contains any loop body instruction
-    uint64_t last_bundle_idx = 0;
-    for (uint64_t i = basic_blocks[1].first; i < basic_blocks[1].second - 1; ++i) {
-        if (time_table[i] != UINT64_MAX) {
-            last_bundle_idx = std::max(last_bundle_idx, time_table[i]);
-        }
-    }
-    
-    // If there's an empty branch slot in the last bundle, use it
-    // Otherwise, create a new bundle for the loop instruction
-    if (latest_instr_time <= last_bundle_idx && last_bundle_idx < m_bundles.size() && m_bundles[last_bundle_idx][4] == -1) {
-        m_bundles[last_bundle_idx][4] = loop_ins_idx;
-        time_table[loop_ins_idx] = last_bundle_idx;
-    } else {
-        // Create a new bundle just for the loop instruction
-        insert_ASAP(loop_ins_idx, latest_instr_time, time_table);
-    }
-    
+
+    schedule_asap(time_table, loop_ins_idx, latest_instr_time);
+
     // Set loop end time
     m_time_end_of_loop = m_bundles.size();
     
@@ -584,9 +547,7 @@ std::vector<uint64_t> LoopCompiler::schedule_bb2(std::vector<uint64_t>& time_tab
         }
         
         // Try to insert ASAP, if not possible, append a new bundle
-        if (!insert_ASAP(i, lowest_time, time_table)) {
-            append(i, lowest_time, time_table);
-        }
+        schedule_asap(time_table, i, lowest_time);
     }
     
     return time_table;
@@ -816,6 +777,7 @@ void LoopCompiler::rename(
  * Inserts a mov instruction at the end of the loop
  * Used for handling interloop dependencies
  */
+/*
 void LoopCompiler::insert_mov_at_end_of_loop(uint32_t dest_reg, uint32_t src_reg, 
                                            std::vector<uint64_t>& time_table) {
     // Determine the index for the new instruction
@@ -853,12 +815,14 @@ void LoopCompiler::insert_mov_at_end_of_loop(uint32_t dest_reg, uint32_t src_reg
     // Just setting time_table ensures this mov will be considered in the final output
     // The actual mov instruction will be created in the apply_renaming function
 }
+*/
 
 /**
  * Perform register allocation (allocb algorithm)
  * Implements the register allocation described in section 3.3.1
  * Returns both destination and operand mappings in a single call
  */
+/*
 std::pair<std::vector<uint32_t>, std::vector<std::pair<uint32_t, uint32_t>>> 
 LoopCompiler::allocate_registers(const std::vector<Dependency>& dependencies, 
                                 const std::vector<uint64_t>& time_table) {
@@ -1225,3 +1189,4 @@ LoopCompiler::allocate_registers(const std::vector<Dependency>& dependencies,
     
     return {new_dest, new_use};
 }
+*/
