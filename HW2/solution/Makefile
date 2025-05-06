@@ -3,7 +3,7 @@ BUILD_DIR := build
 SRC_DIR := src
 
 # finds all the .cpp files in the src directory
-SRCS := $(shell find $(SRC_DIR) -name *.cpp)
+SRCS := $(shell find $(SRC_DIR) -name *.cpp | grep -v $(SRC_DIR)/loop_compiler_v2.cpp)
 
 # prepends BUILD_DIR and appends .o to every src file
 OBJS := $(SRCS:%=$(BUILD_DIR)/%.o)
