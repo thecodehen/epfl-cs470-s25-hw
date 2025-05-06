@@ -71,7 +71,7 @@ VLIWProgram LoopCompiler::compile() {
     }
 
     // Schedule instructions (main scheduling algorithm)
-    auto time_table = schedule(dependencies);
+    auto time_table = schedule(basic_blocks, dependencies);
 
     // Uncomment to use alternative renaming algorithm
     rename(basic_blocks, dependencies, time_table);
@@ -276,29 +276,28 @@ VLIWProgram LoopCompiler::compile() {
 /**
  * Main scheduling function - orchestrates the scheduling of all basic blocks
  */
-std::vector<uint64_t> LoopCompiler::schedule(std::vector<Dependency>& dependencies) {
+std::vector<uint64_t> LoopCompiler::schedule(
+    const std::vector<Block>& basic_blocks,
+    const std::vector<Dependency>& dependencies) {
     // Initialize time table to map instructions to bundles
     std::vector<uint64_t> time_table(m_program.size(), UINT64_MAX);
     
     // Clear any previous scheduling data
     m_bundles.clear();
     
-    // Get basic blocks
-    auto basic_blocks = find_basic_blocks();
-    
     // Schedule each basic block in order
     // First the pre-loop code (BB0)
-    schedule_bb0(time_table);
+    schedule_bb0(time_table, basic_blocks, dependencies);
     
     // Then if there's a loop, schedule the loop body (BB1)
     if (basic_blocks.size() > 1) {
         m_time_start_of_loop = m_bundles.size(); // Mark start of loop
-        schedule_bb1(time_table);
+        schedule_bb1(time_table, basic_blocks, dependencies);
         m_time_end_of_loop = m_bundles.size(); // Mark end of loop
         
         // Finally, if there's post-loop code, schedule it (BB2)
         if (basic_blocks.size() > 2) {
-            schedule_bb2(time_table);
+            schedule_bb2(time_table, basic_blocks, dependencies);
         }
     }
 
@@ -412,10 +411,10 @@ bool LoopCompiler::try_schedule(
 /**
  * Schedule basic block 0 (pre-loop instructions)
  */
-std::vector<uint64_t> LoopCompiler::schedule_bb0(std::vector<uint64_t>& time_table) {
-    auto basic_blocks = find_basic_blocks();
-    auto dependencies = find_dependencies(basic_blocks);
-    
+std::vector<uint64_t> LoopCompiler::schedule_bb0(std::vector<uint64_t>& time_table,
+    const std::vector<Block>& basic_blocks,
+    const std::vector<Dependency>& dependencies
+) {
     // Process each instruction in BB0
     for (uint64_t i = basic_blocks[0].first; i < basic_blocks[0].second; ++i) {
         uint64_t lowest_time = 0;
@@ -438,10 +437,10 @@ std::vector<uint64_t> LoopCompiler::schedule_bb0(std::vector<uint64_t>& time_tab
 /**
  * Schedule basic block 1 (loop body instructions)
  */
-std::vector<uint64_t> LoopCompiler::schedule_bb1(std::vector<uint64_t>& time_table) {
-    auto basic_blocks = find_basic_blocks();
-    auto dependencies = find_dependencies(basic_blocks);
-    
+std::vector<uint64_t> LoopCompiler::schedule_bb1(std::vector<uint64_t>& time_table,
+    const std::vector<Block>& basic_blocks,
+    const std::vector<Dependency>& dependencies
+) {
     // If BB1 is empty, set markers and handle the loop instruction separately
     if (basic_blocks[1].first >= basic_blocks[1].second - 1) {
         m_time_start_of_loop = m_bundles.size();
@@ -519,15 +518,15 @@ std::vector<uint64_t> LoopCompiler::schedule_bb1(std::vector<uint64_t>& time_tab
 /**
  * Schedule basic block 2 (post-loop instructions)
  */
-std::vector<uint64_t> LoopCompiler::schedule_bb2(std::vector<uint64_t>& time_table) {
-    auto basic_blocks = find_basic_blocks();
-    auto dependencies = find_dependencies(basic_blocks);
-    
+std::vector<uint64_t> LoopCompiler::schedule_bb2(std::vector<uint64_t>& time_table,
+    const std::vector<Block>& basic_blocks,
+    const std::vector<Dependency>& dependencies
+) {
     // Process each instruction in BB2
     for (uint64_t i = basic_blocks[2].first; i < basic_blocks[2].second; ++i) {
         // Start from the current end of schedule
         uint64_t lowest_time = m_bundles.size();
-        
+
         // Check loop invariant dependencies
         for (uint64_t dep_id : dependencies[i].loop_invariant) {
             uint64_t latency = (m_program[dep_id].op == Opcode::mulu) ? 3 : 1;
@@ -584,7 +583,17 @@ void LoopCompiler::insert_mov_end_of_loop(
     // move the loop instruction enough so that we can schedule at lowest_time
     for (; m_time_end_of_loop - 1 < lowest_time; ++m_time_end_of_loop) {
         m_bundles.at(m_time_end_of_loop - 1).at(4) = -1;
-        m_bundles.insert(m_bundles.begin() + m_time_end_of_loop, Bundle{-1, -1, -1, -1, -1});
+        if (m_bundles.size() <= m_time_end_of_loop ||
+            // if the next bundle is completely nops, there's no need to
+            // insert a new bundle
+            m_bundles.at(m_time_end_of_loop)[0] != -1 ||
+            m_bundles.at(m_time_end_of_loop)[1] != -1 ||
+            m_bundles.at(m_time_end_of_loop)[2] != -1 ||
+            m_bundles.at(m_time_end_of_loop)[3] != -1 ||
+            m_bundles.at(m_time_end_of_loop)[4] != -1
+            ) {
+            m_bundles.insert(m_bundles.begin() + m_time_end_of_loop, Bundle{-1, -1, -1, -1, -1});
+        }
         m_bundles.at(m_time_end_of_loop).at(4) = loop_instr_id;
     }
 
@@ -604,7 +613,15 @@ void LoopCompiler::insert_mov_end_of_loop(
         if (cur_time == m_time_end_of_loop - 1) {
             // we are trying to schedule something at the end of the loop, so
             // we need to move the loop instruction to the new bundle
-            m_bundles.insert(m_bundles.begin() + m_time_end_of_loop, Bundle{-1, -1, -1, -1, -1});
+            if (m_bundles.size() <= m_time_end_of_loop ||
+                m_bundles.at(m_time_end_of_loop)[0] != -1 ||
+                m_bundles.at(m_time_end_of_loop)[1] != -1 ||
+                m_bundles.at(m_time_end_of_loop)[2] != -1 ||
+                m_bundles.at(m_time_end_of_loop)[3] != -1 ||
+                m_bundles.at(m_time_end_of_loop)[4] != -1
+                ) {
+                m_bundles.insert(m_bundles.begin() + m_time_end_of_loop, Bundle{-1, -1, -1, -1, -1});
+            }
             m_bundles.at(cur_time).at(4) = -1;
             m_bundles.at(cur_time + 1).at(4) = loop_instr_id;
             ++m_time_end_of_loop;

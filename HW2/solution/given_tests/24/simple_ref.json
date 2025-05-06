@@ -1,0 +1,8 @@
+[
+    [ "mov LC, 100", "mov x1, 1", "nop", "nop", "nop" ],
+    [ "mov x2, 1", "nop", "nop", "nop", "nop" ],
+    [ "nop", "nop", "mulu x3, x2, x2", "nop", "nop" ],
+    [ "add x4, x1, x1", "nop", "nop", "nop", "nop" ],
+    [ "mov x1, x4", "nop", "nop", "nop", "loop 3" ],
+    [ "addi x5, x3, 40", "nop", "nop", "nop", "nop" ]
+]

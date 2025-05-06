@@ -40,25 +40,32 @@ private:
      * Main scheduling function - schedules all basic blocks
      * Returns a vector mapping instruction IDs to their scheduled bundle IDs
      */
-    std::vector<uint64_t> schedule(std::vector<Dependency>& dependencies);
+    std::vector<uint64_t> schedule(const std::vector<Block>& basic_blocks,
+                                   const std::vector<Dependency>& dependencies);
     
     /**
      * Schedule basic block 0 (pre-loop instructions)
      * Places instructions respecting local dependencies
      */
-    std::vector<uint64_t> schedule_bb0(std::vector<uint64_t>& time_table);
+    std::vector<uint64_t> schedule_bb0(std::vector<uint64_t>& time_table, 
+        const std::vector<Block>& basic_blocks,
+                                       const std::vector<Dependency>& dependencies);
     
     /**
      * Schedule basic block 1 (loop body instructions)
      * Handles loop-specific dependencies
      */
-    std::vector<uint64_t> schedule_bb1(std::vector<uint64_t>& time_table);
+    std::vector<uint64_t> schedule_bb1(std::vector<uint64_t>& time_table,
+        const std::vector<Block>& basic_blocks,
+                                       const std::vector<Dependency>& dependencies);
     
     /**
      * Schedule basic block 2 (post-loop instructions)
      * Respects all dependencies including those from loop execution
      */
-    std::vector<uint64_t> schedule_bb2(std::vector<uint64_t>& time_table);
+    std::vector<uint64_t> schedule_bb2(std::vector<uint64_t>& time_table,
+        const std::vector<Block>& basic_blocks,
+                                       const std::vector<Dependency>& dependencies);
 
     /**
      * schedule_asap will schedule the instruction at the earliest possible time
