@@ -450,9 +450,20 @@ std::vector<uint64_t> LoopCompiler::schedule_bb1(std::vector<uint64_t>& time_tab
     auto basic_blocks = find_basic_blocks();
     auto dependencies = find_dependencies(basic_blocks);
     
-    // If BB1 is empty, just set markers and return
-    if (basic_blocks[1].first >= basic_blocks[1].second) {
+    // If BB1 is empty, set markers and handle the loop instruction separately
+    if (basic_blocks[1].first >= basic_blocks[1].second - 1) {
         m_time_start_of_loop = m_bundles.size();
+        
+        // For empty loops, we still need to schedule the loop instruction
+        uint64_t loop_ins_idx = basic_blocks[1].second - 1;
+        
+        // Store loop start address in the instruction (where to jump back to)
+        Instruction& loop_instr = const_cast<Instruction&>(m_program[loop_ins_idx]);
+        loop_instr.imm = m_bundles.size();
+        
+        // Create a separate bundle for the loop instruction
+        append(loop_ins_idx, m_bundles.size(), time_table);
+        
         m_time_end_of_loop = m_bundles.size();
         return time_table;
     }
