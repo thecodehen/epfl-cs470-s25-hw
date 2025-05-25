@@ -3,6 +3,15 @@
 void kernel2( int array[ARRAY_SIZE] )
 {
     int i;
+    int a = array[0], b = array[1], c = array[2];
+    int tmp = a * b, res;
     for(i=3; i<ARRAY_SIZE; i++)
-        array[i] = array[i-1] + array[i-2] * array[i-3];
+    {
+#pragma HLS PIPELINE
+        res = c + tmp;
+        array[i] = res;
+        tmp = b * c;
+        b = c;
+        c = res;
+    }
 }
