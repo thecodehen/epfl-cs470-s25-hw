@@ -13,13 +13,17 @@ float kernel5(float bound, float a[ARRAY_SIZE], float b[ARRAY_SIZE])
         sums[i] = a[i] + b[i];
     }
     float sum = 0;
+
+    int j = 0;
+    bool done = false;
     for (int i = 0; i < ARRAY_SIZE; i++) {
-#pragma HLS PIPELINE II=2
-#pragma HLS DEPENDENCE variable=sum type=inter direction=WAW dependent=false
-        sum = sums[i];
-        if (sum >= bound) {
-            break;
+#pragma HLS PIPELINE
+#pragma HLS UNROLL factor=PARTITION_FACTOR
+        if (!done && sums[i] < bound) {
+            ++j;
+        } else {
+            done = true;
         }
     }
-    return sum;
+    return sums[j];
 }
